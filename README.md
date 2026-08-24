@@ -9,9 +9,9 @@ claude plugin install fast-browser@mattstack
 
 ## This repo is generated
 
-Its whole contents are published from `marketplace/` in
+Its whole tree is published from `marketplace/` in
 [`m4ttstack/rt`](https://github.com/m4ttstack/rt) by
-`scripts/release/marketplace.sh`, as one force-pushed commit per release. Edits
+`scripts/release/marketplace.sh`, one commit per release that changes it. Edits
 made here are overwritten by the next release; change the catalog in `rt`.
 
 ## Plugin sources
