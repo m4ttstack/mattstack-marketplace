@@ -174,10 +174,11 @@ digraph watch_ci {
     "git ls-remote origin refs/heads/<branch> (the watched sha)" [shape=plaintext];
     "Which forge watches (watch-ci)?" [shape=diamond];
 
-    "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}" [shape=plaintext];
+    "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [shape=plaintext];
     "ci_watch state (watch-ci)?" [shape=diamond];
-    "STOP: GitLab CI watches go through ci_watch, reads through mr_job_trace, retries through mr_retry" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Watch calls = 9 (watch-ci)?" [shape=diamond];
+    "STOP: GitLab CI watches go through ci_watch, reads through the read tools or gitlab_get, retries through mr_retry" [shape=octagon style=filled fillcolor=red fontcolor=white];
+    "budget.spent (watch-ci)?" [shape=diamond];
+    "Waiting results in a row = 2 (watch-ci)?" [shape=diamond];
     "Re-claims after a lost lease = 2 (watch-ci)?" [shape=diamond];
     "Verify the branch was pushed" [shape=box];
     "Fixed the ci_watch call once already (watch-ci)?" [shape=diamond];
@@ -204,7 +205,7 @@ digraph watch_ci {
     "<scripts>/ci-triage.sh --forge <forge> --pipeline <N>" [shape=plaintext];
     "Read the triage report" [shape=box];
     "Trace tails enough to classify (GitLab)?" [shape=diamond];
-    "mr_job_trace {repoName, iid, jobId} per failed job" [shape=plaintext];
+    "mr_job_trace {repoName, iid, jobId, tailLines?, headLines?, grep?} per failed job" [shape=plaintext];
     "Classify each failure REAL or INFRA (GitLab)" [shape=box];
     "Classify each failing check REAL or INFRA (GitHub)" [shape=box];
     "Only INFRA blocking failures, none retried yet (watch-ci)?" [shape=diamond];
@@ -212,7 +213,7 @@ digraph watch_ci {
     "Own run (watch-ci green)?" [shape=diamond];
     "MR found (watch-ci green)?" [shape=diamond];
     "Forge host (watch-ci draft check)?" [shape=diamond];
-    "mr_view {repoName, iid, maxAgeMs: 5000} (draft check)" [shape=plaintext];
+    "mr_view {repoName, iid} (draft check)" [shape=plaintext];
     "gh pr view <mr> --json isDraft (draft check)" [shape=plaintext];
     "MR still a draft (watch-ci)?" [shape=diamond];
     "watch-ci gate mark-ready" [shape=box];
@@ -283,7 +284,8 @@ digraph watch_ci {
     "Forge host (watch-ci target)?" -> "Own run (watch-ci identity)?" [label="inherited: the forge and MR the caller handed"];
     "Forge host (watch-ci target)?" -> "watch-ci gate clarify: which forge?" [label="anything else, nothing handed"];
     "watch-ci gate clarify: which forge?" -> "Forge host (watch-ci target)?" [label="answered: the named forge"];
-    "mr_for_branch {repoName: <root>, branches: [<branch>]}" -> "Own run (watch-ci identity)?";
+    "mr_for_branch {repoName: <root>, branches: [<branch>]}" -> "Own run (watch-ci identity)?" [label="a result, a null entry included"];
+    "mr_for_branch {repoName: <root>, branches: [<branch>]}" -> "watch-ci gate ci" [label="an error: the gate quotes its text (never read as no MR)"];
     "gh pr list --head <branch> --json number,url" -> "Own run (watch-ci identity)?";
     "Own run (watch-ci identity)?" -> "run_field_set {key: branch, then mr when found, stage: watch-ci}" [label="yes"];
     "Own run (watch-ci identity)?" -> "MR found (watch-ci lease)?" [label="no: inherited"];
@@ -303,11 +305,12 @@ digraph watch_ci {
     "Watched sha known (watch-ci)?" -> "Which forge watches (watch-ci)?" [label="yes: handed by ship, or read at this run's push"];
     "Watched sha known (watch-ci)?" -> "git ls-remote origin refs/heads/<branch> (the watched sha)" [label="no: nothing pushed in this run"];
     "git ls-remote origin refs/heads/<branch> (the watched sha)" -> "Which forge watches (watch-ci)?";
-    "Which forge watches (watch-ci)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}" [label="GitLab"];
+    "Which forge watches (watch-ci)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [label="GitLab"];
     "Which forge watches (watch-ci)?" -> "gh pr checks <mr> (poll)" [label="GitHub"];
 
-    "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}" -> "ci_watch state (watch-ci)?";
-    "ci_watch state (watch-ci)?" -> "Watch calls = 9 (watch-ci)?" [label="running or waiting"];
+    "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" -> "ci_watch state (watch-ci)?";
+    "ci_watch state (watch-ci)?" -> "budget.spent (watch-ci)?" [label="running"];
+    "ci_watch state (watch-ci)?" -> "Waiting results in a row = 2 (watch-ci)?" [label="waiting"];
     "ci_watch state (watch-ci)?" -> "Own run (watch-ci green)?" [label="success or success_with_warnings"];
     "ci_watch state (watch-ci)?" -> "Triage with what (watch-ci)?" [label="failed"];
     "ci_watch state (watch-ci)?" -> "watch-ci gate ci" [label="canceled, skipped, manual, superseded or aborted"];
@@ -316,15 +319,16 @@ digraph watch_ci {
     "Re-claims after a lost lease = 2 (watch-ci)?" -> "ci_lease_claim {mrUrl, branch}" [label="no: claim it again"];
     "Re-claims after a lost lease = 2 (watch-ci)?" -> "watch-ci gate ci" [label="yes: the lease keeps vanishing"];
     "ci_watch state (watch-ci)?" -> "Fixed the ci_watch call once already (watch-ci)?" [label="tool error"];
-    "ci_watch state (watch-ci)?" -> "STOP: GitLab CI watches go through ci_watch, reads through mr_job_trace, retries through mr_retry" [label="tempted to watch with a script or the GitLab CLI"];
-    "STOP: GitLab CI watches go through ci_watch, reads through mr_job_trace, retries through mr_retry" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}";
-    "Watch calls = 9 (watch-ci)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}" [label="no: call again"];
-    "Watch calls = 9 (watch-ci)?" -> "Verify the branch was pushed" [label="yes, still waiting: no pipeline for the sha"];
-    "Watch calls = 9 (watch-ci)?" -> "watch-ci gate ci" [label="yes, still running: timeout"];
+    "ci_watch state (watch-ci)?" -> "STOP: GitLab CI watches go through ci_watch, reads through the read tools or gitlab_get, retries through mr_retry" [label="tempted to watch with a script or the GitLab CLI"];
+    "STOP: GitLab CI watches go through ci_watch, reads through the read tools or gitlab_get, retries through mr_retry" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}";
+    "budget.spent (watch-ci)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [label="false: call again"];
+    "budget.spent (watch-ci)?" -> "watch-ci gate ci" [label="true: timeout"];
+    "Waiting results in a row = 2 (watch-ci)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [label="no: call again"];
+    "Waiting results in a row = 2 (watch-ci)?" -> "Verify the branch was pushed" [label="yes: no pipeline for the sha"];
     "Verify the branch was pushed" -> "watch-ci gate ci";
     "Fixed the ci_watch call once already (watch-ci)?" -> "Fix what the ci_watch error names" [label="no"];
     "Fixed the ci_watch call once already (watch-ci)?" -> "watch-ci off-script gate: ci_watch refused" [label="yes"];
-    "Fix what the ci_watch error names" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}";
+    "Fix what the ci_watch error names" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}";
     "watch-ci off-script gate: ci_watch refused" -> "watch-ci off-script answer (ci_watch)?";
     "watch-ci off-script answer (ci_watch)?" -> "Verdict the human reported (watch-ci)?" [label="take: the human read the pipeline"];
     "watch-ci off-script answer (ci_watch)?" -> "Off-script rounds = 2 (ci_watch)?" [label="iterate: the human fixed it"];
@@ -332,7 +336,7 @@ digraph watch_ci {
     "watch-ci off-script answer (ci_watch)?" -> "Was a lease claimed (watch-ci exit)?" [label="hand back"];
     "Verdict the human reported (watch-ci)?" -> "Own run (watch-ci green)?" [label="green for the watched sha"];
     "Verdict the human reported (watch-ci)?" -> "watch-ci gate ci" [label="red, or not for the watched sha"];
-    "Off-script rounds = 2 (ci_watch)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?}" [label="no: watch again"];
+    "Off-script rounds = 2 (ci_watch)?" -> "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [label="no: watch again"];
     "Off-script rounds = 2 (ci_watch)?" -> "Was a lease claimed (watch-ci exit)?" [label="yes: a failure, the refusals are the reason"];
 
     "gh pr checks <mr> (poll)" -> "gh pr checks exit (GitHub poll)?";
@@ -363,20 +367,20 @@ digraph watch_ci {
     "<scripts>/ci-triage.sh --forge <forge> --pipeline <N>" -> "Read the triage report";
     "Read the triage report" -> "Only INFRA blocking failures, none retried yet (watch-ci)?";
     "Trace tails enough to classify (GitLab)?" -> "Classify each failure REAL or INFRA (GitLab)" [label="yes"];
-    "Trace tails enough to classify (GitLab)?" -> "mr_job_trace {repoName, iid, jobId} per failed job" [label="no"];
-    "mr_job_trace {repoName, iid, jobId} per failed job" -> "Classify each failure REAL or INFRA (GitLab)";
+    "Trace tails enough to classify (GitLab)?" -> "mr_job_trace {repoName, iid, jobId, tailLines?, headLines?, grep?} per failed job" [label="no: missing, short or teardown-only tail"];
+    "mr_job_trace {repoName, iid, jobId, tailLines?, headLines?, grep?} per failed job" -> "Classify each failure REAL or INFRA (GitLab)";
     "Classify each failure REAL or INFRA (GitLab)" -> "Only INFRA blocking failures, none retried yet (watch-ci)?";
     "Classify each failing check REAL or INFRA (GitHub)" -> "Only INFRA blocking failures, none retried yet (watch-ci)?";
     "Only INFRA blocking failures, none retried yet (watch-ci)?" -> "MR found (before the retry)?" [label="yes"];
-    "Only INFRA blocking failures, none retried yet (watch-ci)?" -> "watch-ci gate ci" [label="no: a REAL or unclassified failure, or retried already"];
+    "Only INFRA blocking failures, none retried yet (watch-ci)?" -> "watch-ci gate ci" [label="no: a REAL or still-unclear failure, or retried already"];
 
     "Own run (watch-ci green)?" -> "MR found (watch-ci green)?" [label="yes"];
     "Own run (watch-ci green)?" -> "Was a lease claimed (watch-ci exit)?" [label="no: the verdict goes back to the caller"];
     "MR found (watch-ci green)?" -> "Forge host (watch-ci draft check)?" [label="yes"];
     "MR found (watch-ci green)?" -> "Was a lease claimed (watch-ci exit)?" [label="no: nothing to mark ready"];
-    "Forge host (watch-ci draft check)?" -> "mr_view {repoName, iid, maxAgeMs: 5000} (draft check)" [label="GitLab"];
+    "Forge host (watch-ci draft check)?" -> "mr_view {repoName, iid} (draft check)" [label="GitLab"];
     "Forge host (watch-ci draft check)?" -> "gh pr view <mr> --json isDraft (draft check)" [label="GitHub"];
-    "mr_view {repoName, iid, maxAgeMs: 5000} (draft check)" -> "MR still a draft (watch-ci)?";
+    "mr_view {repoName, iid} (draft check)" -> "MR still a draft (watch-ci)?";
     "gh pr view <mr> --json isDraft (draft check)" -> "MR still a draft (watch-ci)?";
     "MR still a draft (watch-ci)?" -> "watch-ci gate mark-ready" [label="yes"];
     "MR still a draft (watch-ci)?" -> "Was a lease claimed (watch-ci exit)?" [label="no"];
@@ -557,7 +561,8 @@ As above; Iterate re-claims before the retry.
 
 ### Verify the branch was pushed
 
-Nine `ci_watch` calls found no pipeline for the watched sha. Compare the
+Two `ci_watch` calls in a row returned `waiting`: no pipeline exists for
+the watched sha. Compare the
 watched sha with the remote branch. Unpushed: the `ci` gate says so ("ship
 first"). Pushed: the `ci` gate says no pipeline ran for that sha.
 
@@ -597,24 +602,50 @@ claim, no watch, no retry, no push inside it.
 or INFRA) with its job id. `<N>` is the number in `ci_watch`'s
 `pipeline.id` on GitLab, and the run id from the failing check's link on
 GitHub. A script that fails instead of reporting: quote its output and
-classify from `failedJobs` as the unbound flow does, including its rule
-for blocking failures `failedJobs` does not return. INFRA job ids go to
+classify from `failedJobs` as the unbound flow does. INFRA job ids go to
 `mr_retry` (GitLab) or `gh run rerun` (GitHub); the adapter's printed
 retry command is not run.
 
 ### Classify each failure REAL or INFRA (GitLab)
 
-Read each failed job's `traceTail` in `ci_watch`'s `failedJobs`; a tail too
-short to classify is what `mr_job_trace` is for. REAL: the change broke it
-(a test, type or lint failure in touched code). INFRA: unrelated to the
-change (a runner, network or dependency outage, a known flake). One retry
-per INFRA job; a REAL failure goes to the gate.
+Read each failed job's `traceTail` in `ci_watch`'s `failedJobs`. A job
+with no `traceTail` (past the first five blocking), or a tail too short to
+classify, is read with `mr_job_trace`: the tail first, then `grep` for the
+failure text or `headLines` when the failure sits far above the end. A
+tail of only teardown lines (cleanup, artifact upload, runner exit) says
+nothing about the cause, so read more of the log the same way before
+classifying; that tail is not enough, so the read goes through `mr_job_trace`.
+No failure is classified until its log has been read. When `ci_watch`
+reports `failed` and `failedJobs` is empty, the red is likely in a
+cross-project downstream pipeline (same-project downstream jobs are
+already in `failedJobs`): read `gitlab_get` on
+`projects/:id/pipelines/<pipelineId>/bridges` for the bridge job's id and
+its downstream pipeline, then the downstream pipeline's jobs with
+`gitlab_get`, before classifying. The downstream job's log is read with
+`gitlab_get` on `projects/<downstream project id>/jobs/<jobId>/trace`,
+since `mr_job_trace` reads only this project's jobs. `gitlab_get` returns
+at most the first 256 KiB of a trace, so a long downstream log's end may be
+out of reach: classify such a failure as still unclear (it goes to the
+gate), never INFRA. Never classify a failed pipeline with no job read as
+INFRA.
+REAL: the change broke it (a test, type or lint failure in touched code).
+INFRA: unrelated to the change (a runner, network or dependency outage, a
+known flake). One retry per INFRA job; a REAL failure goes to the gate.
 
-`ci_watch` details at most five blocking failures. When `blockingFailures`
-is larger than the blocking jobs in `failedJobs`, the rest are
-unclassified, so the red is not INFRA only: answer no at `Only INFRA
-blocking failures, none retried yet (watch-ci)?` and let the `ci`
-gate name the count.
+A pipeline fact `ci_watch` and `mr_pipeline` do not return (an earlier
+pipeline on the branch, a pipeline with no MR) is read with
+`pipeline_list`; anything else is read as in "Reading a GitLab fact no
+read tool returns".
+
+### Reading a GitLab fact no read tool returns
+
+At any step of this verb, a GitLab fact the read tools do not return is
+read with `gitlab_get {repoName, path}`: `repoName` = the checkout or
+tree this verb already targets, `path` relative to the API root with `:id`
+for this project, for example `projects/:id/jobs/<jobId>`. The read is part
+of the step that needs it, not an off-script move, so it opens no gate. A
+GitLab error is quoted as GitLab wrote it. Its refusal of a credential path
+is final.
 
 ### Classify each failing check REAL or INFRA (GitHub)
 
@@ -641,7 +672,8 @@ stays draft.
 Red, timeout, no pipeline, or no pipeline for the pushed HEAD. Scope
 `ci:<stage>:<attempt>`. One sentence above the form: the verdict and a
 one-line triage per blocking failure. A `ci_lease_heartbeat` tool error
-also reaches it, quoted in the sentence above the form.
+or an `mr_for_branch` error also reaches it, quoted in the sentence above
+the form.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
@@ -703,8 +735,15 @@ with the comparison as its context.
   red is never read off an older pipeline. On GitHub, `headRefOid` from `gh
   pr view` must equal the watched sha, and "no checks reported" is pending,
   not red.
-- **The watch budget.** `Watch calls = 9` is 45 minutes of 300 second
-  calls; it resets when the watched sha changes and after a job retry.
+- **The watch budget.** `budget.spent (watch-ci)?` reads the `budget`
+  field of a `running` result: `ci_watch` measures it from the pipeline's
+  own start against the `ci.watch.budgetMinutes` setting, so there are no
+  calls to count. A job retry keeps the pipeline's start, so after one pass
+  `freshWindow: true` alone until a result carries a non-null `budget`, then
+  that result's `budget.minutes` as `budgetMinutes` on every later call
+  for the sha. `Waiting results in a row = 2 (watch-ci)?` counts
+  consecutive `waiting` results (their `budget` is null); any other state
+  resets it, and so does a new watched sha or a job retry.
 - **Retry on GitHub.** The run id for `gh run rerun` comes from the failed
   check's link in `gh pr checks <mr>`.
 
