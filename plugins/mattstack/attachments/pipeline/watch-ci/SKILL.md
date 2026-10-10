@@ -105,7 +105,7 @@ inherited one.
 `run_list` filtered to `status` = `running` and `work_type` = `watch-ci`;
 never read the run dbs by hand. Gate `clarify`: one sentence naming each
 candidate's `spawned_by`, `started_at` and `current_stage`, then one
-**Resume** option per candidate (recommended for a run this session started
+**Resume** option per candidate (labelled `Resume (Recommended)` for a run this session started
 earlier; a run another live pane owns is not yours) / **Start fresh**, and
 **Hold** in `next`.
 
@@ -176,6 +176,8 @@ digraph watch_ci {
 
     "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" [shape=plaintext];
     "ci_watch state (watch-ci)?" [shape=diamond];
+    "End the turn: ci_watch runs in the background (task <id>, watch-ci)" [shape=box];
+    "Trigger: the ci_watch task notification re-invoked this verb (watch-ci)" [shape=ellipse];
     "STOP: GitLab CI watches go through ci_watch, reads through the read tools or gitlab_get, retries through mr_retry" [shape=octagon style=filled fillcolor=red fontcolor=white];
     "budget.spent (watch-ci)?" [shape=diamond];
     "Waiting results in a row = 2 (watch-ci)?" [shape=diamond];
@@ -310,6 +312,9 @@ digraph watch_ci {
 
     "ci_watch {repoName: <root>, iid, sha, priorPipelineId?, freshWindow?, budgetMinutes?}" -> "ci_watch state (watch-ci)?";
     "ci_watch state (watch-ci)?" -> "budget.spent (watch-ci)?" [label="running"];
+    "ci_watch state (watch-ci)?" -> "End the turn: ci_watch runs in the background (task <id>, watch-ci)" [label="backgrounded: moved to the background as task <id>"];
+    "End the turn: ci_watch runs in the background (task <id>, watch-ci)" -> "Trigger: the ci_watch task notification re-invoked this verb (watch-ci)" [style=dashed];
+    "Trigger: the ci_watch task notification re-invoked this verb (watch-ci)" -> "ci_watch state (watch-ci)?";
     "ci_watch state (watch-ci)?" -> "Waiting results in a row = 2 (watch-ci)?" [label="waiting"];
     "ci_watch state (watch-ci)?" -> "Own run (watch-ci green)?" [label="success or success_with_warnings"];
     "ci_watch state (watch-ci)?" -> "Triage with what (watch-ci)?" [label="failed"];
@@ -566,6 +571,17 @@ the watched sha. Compare the
 watched sha with the remote branch. Unpushed: the `ci` gate says so ("ship
 first"). Pushed: the `ci` gate says no pipeline ran for that sha.
 
+### End the turn: ci_watch runs in the background (task <id>, watch-ci)
+
+Claude Code moves a `ci_watch` still running after 120 s to the background
+and re-invokes this pane with its result as a `<task-notification>`. End
+the turn in one line: `watching CI in the background (task <id>)`. The
+notification's `<result>` is the next `ci_watch state`. The pipeline gate
+stop hook lets a turn end while a background task is pending, and a chat or
+user message that arrives meanwhile reaches you at once. A foreground wait
+(a `sleep`, a polling script, a second `ci_watch`) is the thing this node
+replaces: it delays the result and every message by the length of the wait.
+
 ### Fix what the ci_watch error names
 
 `ci_watch` refused its input. Correct what the error names (`repoName` the
@@ -659,7 +675,7 @@ is green for the MR's head.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
-| `ready` | **Mark ready now** / **Keep it draft** | always |
+| `ready` | **Mark ready now (Recommended)** / **Keep it draft** | always |
 | `next` | **Proceed** / **Iterate here** / **Go back** / **Hold** | always |
 | `to` | one option per earlier stage, split `to-1`, `to-2`, ... over 4; with exactly one candidate it labels **Go back to `<stage>`** in `next` instead | Go back answered and `run_snapshot` shows more than one earlier stage row |
 
@@ -677,7 +693,7 @@ the form.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
-| `action` | **Fix and re-push** (a REAL failure in the change; after the third fix round, **Hand back** is recommended instead) / **Retry the job** (a flake not yet retried) / **Hand back** / **Abandon the run** (own run only) | always |
+| `action` | **Fix and re-push (Recommended)** (a REAL failure in the change; after the third fix round the suffix moves to **Hand back**) / **Retry the job** (a flake not yet retried) / **Hand back** / **Abandon the run** (own run only) | always |
 | `next` | **Proceed** / **Iterate here** / **Hold** | always |
 
 Selection: `{"next":"fix|retry|handback|abandon|iterate|hold","note":"<their words or null>"}`.
