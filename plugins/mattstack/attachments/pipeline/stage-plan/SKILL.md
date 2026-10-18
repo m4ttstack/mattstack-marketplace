@@ -15,50 +15,48 @@ metadata:
 
 {{stage.fields}}
 
-Run state: the orchestrator opens and closes this stage, so never write
-`run_stage` `start` or `done` here. Read consumes with `run_field_get`,
-write each produce with `run_field_set` (`stage: "plan"`) the moment it
-exists, and on failure write `run_stage {action: fail, stage: "plan",
-reason}` naming what failed.
+The orchestrator owns this stage's rows: read consumes with
+`run_field_get`, write produces with `run_field_set {stage: "plan"}`, and
+end a failure with `run_stage {action: fail, stage: "plan", reason}`.
 
 ```dot
 digraph plan {
     rankdir=TB;
 
-    "Plan stage entered" [shape=ellipse];
-    "run_field_get {key: ticket}" [shape=plaintext];
-    "Read the ticket" [shape=box];
-    "Next move after reading the ticket?" [shape=diamond];
-    "STOP: no code, no file, no implementer dispatch before the printed block" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Pick the tier" [shape=box];
-    "Print the triage block" [shape=box];
-    "Gate plan (table below)" [shape=box];
-    "plan answer?" [shape=diamond];
-    "run_decision {contract: execution-strategy@1, scope: run, selection: {tier}, decidedBy: stage-plan}" [shape=plaintext];
-    "run_field_set {key: approach}; run_field_set {key: evidence-plan}" [shape=plaintext];
-    "Hand the Go back answer to the orchestrator" [shape=doublecircle];
-    "run_decision {contract: gate@1, scope: hold:plan:<attempt>, selection: {reason}, decidedBy}" [shape=plaintext];
-    "run_field_set {key: hold, value: <their words, or held>, stage: plan}" [shape=plaintext];
-    "Held: end the turn naming run and stage" [shape=doublecircle];
-    "Plan done: return to the orchestrator" [shape=doublecircle style=filled fillcolor=lightgreen];
+    plan_entered [label="Plan stage entered" shape=ellipse];
+    run_field_get_ticket [label="run_field_get {key: ticket}" shape=plaintext];
+    read_ticket [label="Read the ticket" shape=box];
+    next_move_after_ticket [label="Next move after reading the ticket?" shape=diamond];
+    stop_code_before_triage [label="STOP: no code, no file, no implementer dispatch before the printed block" shape=octagon style=filled fillcolor=red fontcolor=white];
+    pick_tier [label="Pick the tier" shape=box];
+    print_triage_block [label="Print the triage block" shape=box];
+    gate_plan [label="Gate plan (table below)" shape=box];
+    plan_answer [label="plan answer?" shape=diamond];
+    run_decision_strategy [label="run_decision {contract: execution-strategy@1, scope: run, selection: {tier}, decidedBy: stage-plan}" shape=plaintext];
+    run_field_set_approach [label="run_field_set {key: approach, value: <the recorded tier>, stage: plan}" shape=plaintext];
+    run_field_set_evidence_plan [label="run_field_set {key: evidence-plan, value: <the EVIDENCE value>, stage: plan}" shape=plaintext];
+    hand_back_go_back [label="Hand the Go back answer to the orchestrator" shape=doublecircle];
+    run_hold [label="run_hold {runDb, stage: plan, reason, decidedBy}" shape=plaintext];
+    held_end_turn [label="Held: end the turn naming run and stage" shape=doublecircle];
+    plan_done [label="Plan done: return to the orchestrator" shape=doublecircle style=filled fillcolor=lightgreen];
 
-    "Plan stage entered" -> "run_field_get {key: ticket}";
-    "run_field_get {key: ticket}" -> "Read the ticket";
-    "Read the ticket" -> "Next move after reading the ticket?";
-    "Next move after reading the ticket?" -> "Pick the tier" [label="triage: pick the tier"];
-    "Next move after reading the ticket?" -> "STOP: no code, no file, no implementer dispatch before the printed block" [label="tempted to start on the code"];
-    "STOP: no code, no file, no implementer dispatch before the printed block" -> "Pick the tier";
-    "Pick the tier" -> "Print the triage block";
-    "Print the triage block" -> "Gate plan (table below)";
-    "Gate plan (table below)" -> "plan answer?";
-    "plan answer?" -> "run_decision {contract: execution-strategy@1, scope: run, selection: {tier}, decidedBy: stage-plan}" [label="proceed"];
-    "plan answer?" -> "Read the ticket" [label="iterate: re-read with their note"];
-    "plan answer?" -> "Hand the Go back answer to the orchestrator" [label="go back"];
-    "plan answer?" -> "run_decision {contract: gate@1, scope: hold:plan:<attempt>, selection: {reason}, decidedBy}" [label="hold"];
-    "run_decision {contract: gate@1, scope: hold:plan:<attempt>, selection: {reason}, decidedBy}" -> "run_field_set {key: hold, value: <their words, or held>, stage: plan}";
-    "run_field_set {key: hold, value: <their words, or held>, stage: plan}" -> "Held: end the turn naming run and stage";
-    "run_decision {contract: execution-strategy@1, scope: run, selection: {tier}, decidedBy: stage-plan}" -> "run_field_set {key: approach}; run_field_set {key: evidence-plan}";
-    "run_field_set {key: approach}; run_field_set {key: evidence-plan}" -> "Plan done: return to the orchestrator";
+    plan_entered -> run_field_get_ticket;
+    run_field_get_ticket -> read_ticket;
+    read_ticket -> next_move_after_ticket;
+    next_move_after_ticket -> pick_tier [label="triage: pick the tier"];
+    next_move_after_ticket -> stop_code_before_triage [label="tempted to start on the code"];
+    stop_code_before_triage -> pick_tier;
+    pick_tier -> print_triage_block;
+    print_triage_block -> gate_plan;
+    gate_plan -> plan_answer;
+    plan_answer -> run_decision_strategy [label="proceed"];
+    plan_answer -> read_ticket [label="iterate: re-read with their note"];
+    plan_answer -> hand_back_go_back [label="go back"];
+    plan_answer -> run_hold [label="hold"];
+    run_hold -> held_end_turn;
+    run_decision_strategy -> run_field_set_approach;
+    run_field_set_approach -> run_field_set_evidence_plan;
+    run_field_set_evidence_plan -> plan_done;
 }
 ```
 
@@ -112,19 +110,30 @@ proposal, and the gate records the decision.
 
 ## Gate `plan`
 
-One sentence above the form: the printed tier and why.
+Walk gate-protocol's Runs integration with kind `plan`, `runDb` and
+`stage: "plan"`; the gate tools record the answers. One sentence above the
+form: the printed tier and why.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
-| `tier` | the printed tier, its label ending ` (Recommended)`, then the other two | always |
+| `tier` (write-in) | the printed tier, its label ending ` (Recommended)`, then the other two | always |
 | `failing_test` | the FAILING TEST line to keep, or their rename as text | direct-tdd |
 | the domain's own | as the domain policy words them | the domain declares them |
 | `next` | **Proceed** / **Iterate here** / **Go back** / **Hold** | always |
 | `to` | one option per earlier stage, split `to-1`, ... over 4 | Go back answered and more than one earlier stage row |
 
-Selection: `{"tier":"<picked>","failing_test":"<as confirmed or null>","domain":{<answers>},"next":"proceed|iterate|redirect|hold","to":"<stage or null>","note":"<their words or null>"}`.
 Write `approach` = the tier the gate recorded and `evidence-plan` = the
-EVIDENCE value.
+EVIDENCE value, after the `execution-strategy@1` record: the gate tools
+record the gate's answers, not that contract.
+Hold passes their words (or `held`) as `reason` and the gate result's
+`decidedBy`.
+
+### Hand the Go back answer to the orchestrator
+
+End the stage handing back `{to, note, decidedBy}`: `to` is the gate's
+`to` answer (the one earlier stage when `to` was not shown), `note` their
+words, `decidedBy` the gate result's `decidedBy`. Write nothing else: the
+orchestrator applies it with `run_resolve`.
 
 ## Domain rules
 

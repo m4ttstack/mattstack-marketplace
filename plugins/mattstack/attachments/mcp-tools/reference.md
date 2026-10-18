@@ -5,12 +5,12 @@ Generated from `rt mcp tools --json`; do not edit by hand. Regenerate with:
 
 Every tool below is on the mattstack MCP server, which is allowed whole in every mattstack install. Before a skill tells an agent to run a shell command, check whether a tool here covers it.
 
-Kept on Bash on purpose: `rt gate answer <id> --answers <json> --by shepherd`, `rt gate wait <id>`, `rt events wait`, `git commit`, `git add`, `git fetch`, `git merge-base`, `git rebase --continue` and `--skip`, and project tooling.
+Kept on Bash on purpose: `rt gate wait <id>`, `rt events wait`, `git commit`, `git add`, `git fetch`, `git merge-base`, `git rebase --continue` and `--skip`, and project tooling. A shepherd answers and parks a lane's gates with herd_gate_answer and herd_gate_park.
 
 ### gate_answer
 
 <!-- mcp-lint: allow -->
-Answer an open gate's questions as this pane. Answer values must be option VALUES verbatim; nuance goes in {value, note}, and replacement text for something the gate offered goes in {value, text}.
+Answer an open gate's questions as this pane. Answer values must be option VALUES verbatim; nuance goes in {value, note}, and replacement text for something the gate offered goes in {value, text}. A question opened with writeIn: true may instead take {writeIn: "<the human's own words>"}, sent alone. Under a run, pass runDb and stage and the answer (the CAS winner's, on a conflict) is recorded as the scope's gate@1 decision. A review gate records nothing unless record: true, since its site records the review shape with gate_record, and a stale gate (the scope's extra.gate-source.<scope> names a later gate) records nothing.
 
 ```json
 {
@@ -61,12 +61,42 @@ Answer an open gate's questions as this pane. Answer values must be option VALUE
               "value"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "writeIn": {
+                "type": "string",
+                "pattern": "\\S",
+                "description": "The human's own answer, for a question opened with writeIn: true. Sent alone, never beside value, note or text."
+              }
+            },
+            "required": [
+              "writeIn"
+            ],
+            "additionalProperties": false
           }
         ]
       }
     },
     "override": {
       "type": "boolean"
+    },
+    "runDb": {
+      "type": "string",
+      "description": "The run's runDb, under a pipeline run; the gate's run fields and decision are written there."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage asking; required with runDb."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The decision scope on the run; defaults to the scope whose extra.gate-source.<scope> names this gate (post for a review-post gate), else the gate's kind."
+    },
+    "record": {
+      "type": "boolean",
+      "description": "Record the answers map as the scope's gate@1 decision. Defaults true, except on a review gate (kind respond-plan, respond-post or review-post, or scope post, respond-plan or respond-post), where it defaults false because the site records its review shape with gate_record; pass true there only to record the answers map."
     }
   },
   "required": [
@@ -109,7 +139,7 @@ List gates in all statuses unless open is true, optionally filtered by subject p
 ### gate_ask
 
 <!-- mcp-lint: allow -->
-Open a decision gate with the daemon-side ceremony: subject resolves from this session (explicit subject wins, else its running run, else its agent record's own subject), presentation is computed, and the operator is nudged. Always pass context, quoted from the material the reader decides on, and never trim or skip it for size: over the shared 8192-byte budget (top-level context plus every question's context), question contexts are dropped server-side first, then the top-level context if it is over on its own, and the drop is reported back as contextOmitted: true. A human-owned gate with no context is refused. The in-pane form caps every question at 4 options: keep navigation verbs (iterate, go back, hold) as their own next question and split a larger selection into <id>-1, <id>-2, ... questions whose answers read as one union; one over-cap question makes the whole gate present as wait, reported back as formCapExceeded with the remedy. Returns {id, presentation, subject, supersededId}; then act on the returned presentation. form: ask it in the pane with AskUserQuestion (the gate-fork hook allows it once this gate is open), then answer with the gate_answer tool ({id, answers}), which records the answer as this pane. wait: run `rt gate wait <id>` as background bash and end the turn; the wait itself is never a tool. Prefer {value, label} option objects; bare strings are accepted and stored normalized. Answers must be option VALUES verbatim.
+Open a decision gate with the daemon-side ceremony: subject resolves from this session (explicit subject wins, else its running run, else its agent record's own subject), presentation is computed, and the operator is nudged. Always pass context, quoted from the material the reader decides on, and never trim or skip it for size: over the shared 8192-byte budget (top-level context plus every question's context), question contexts are dropped server-side first, then the top-level context if it is over on its own, and the drop is reported back as contextOmitted: true. A human-owned gate with no context is refused. The in-pane form caps every question at 4 options: keep navigation verbs (iterate, go back, hold) as their own next question and split a larger selection into <id>-1, <id>-2, ... questions whose answers read as one union; one over-cap question makes the whole gate present as wait, reported back as formCapExceeded with the remedy. Returns {id, presentation, subject, supersededId, paneAction, formChunks}; then act on the result's paneAction, which says form or wait for this pane. form: ask it in the pane with AskUserQuestion (the gate-fork hook allows it once this gate is open), then answer with the gate_answer tool ({id, answers}), which records the answer as this pane. wait: run `rt gate wait <id>` as background bash and end the turn; the wait itself is never a tool. Prefer {value, label} option objects; bare strings are accepted and stored normalized. Answers must be option VALUES verbatim, except that a question opened with writeIn: true may be answered {writeIn} with the human's own words. Under a run, pass runDb and stage. formChunks hold the questions 4 to a form.
 
 ```json
 {
@@ -163,6 +193,13 @@ Open a decision gate with the daemon-side ceremony: subject resolves from this s
               ]
             }
           },
+          "writeIn": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Lets the human answer this question in their own words instead of a pick; the answer then arrives as {writeIn}. Set it only on a decision question whose free-text answer you can act on, never on next."
+          },
           "context": {
             "type": "string",
             "description": "Material specific to this one question (what its choice turns on), shown with it; the top-level context stays the whole ask's. Shares the 8192-byte context budget with the top-level context."
@@ -185,10 +222,223 @@ Open a decision gate with the daemon-side ceremony: subject resolves from this s
     },
     "subject": {
       "type": "string"
+    },
+    "runDb": {
+      "type": "string",
+      "description": "The run's runDb, under a pipeline run; the gate's run fields and decision are written there."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage asking; required with runDb."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The decision scope on the run; defaults to the gate's kind."
     }
   },
   "required": [
     "questions"
+  ],
+  "additionalProperties": false
+}
+```
+
+### gate_open
+
+<!-- mcp-lint: allow -->
+Build, validate and size-fit a structured gate from a gate-ctx@1 source (source inline, sourcePath a .json file under a read root, or review: {findings | findingsPath, extras} built by the review-source recipe first), then open it with gate_ask's ceremony. It opens a gate only when called and never picks an answer: the skill owns the gate, presents it and answers it. A source with problems is refused with one line per problem and nothing opens. The context is fitted to the shared 8192-byte budget (structured with optional parts trimmed, else prose); the form view is always the prose of the untrimmed source. Under a run, pass runDb and stage: scope defaults to kind and no kind maps to another scope, so a review-post gate passes scope: "post" itself. The untrimmed source is stored as extra.gate-source.<scope>. Returns gate_ask's result plus mode (structured | prose), fits, trimmed, contextDropped (fits false or the daemon dropped context), formContext and formChunks. handBack: true opens nothing and returns {open: {context, questions}, mode, fits, trimmed, contextDropped, droppedContexts, formContext, formChunks, labelsTruncated?}, with option text truncated as gate_ask does and dropping whole question contexts largest first (then the gate context) when even prose is over budget; outPath also writes the open, in gate-ctx.sh's output shape, to a temp-root file.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "The registry kind, as gate_ask takes it (respond-plan, review-post, ...)."
+    },
+    "source": {
+      "type": "object",
+      "description": "A gate-ctx@1 source: {context?, questions}."
+    },
+    "sourcePath": {
+      "type": "string",
+      "description": "A .json gate-ctx@1 source file under the Claude Code temp root or an installed plugin or pack root."
+    },
+    "review": {
+      "type": "object",
+      "description": "Build the source from a review's findings first: findings inline or findingsPath (a .json file under a read root), and extras {target, reviewer?, round?, questions}.",
+      "properties": {
+        "findings": {
+          "type": "object"
+        },
+        "findingsPath": {
+          "type": "string"
+        },
+        "extras": {
+          "type": "object"
+        }
+      }
+    },
+    "subject": {
+      "type": "string"
+    },
+    "handBack": {
+      "type": "boolean",
+      "description": "Build and fit only; open nothing."
+    },
+    "outPath": {
+      "type": "string",
+      "description": "With handBack: also write the open to this path under the Claude Code temp root."
+    },
+    "runDb": {
+      "type": "string",
+      "description": "The run's runDb, under a pipeline run; the gate's run fields and decision are written there."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage asking; required with runDb."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The decision scope on the run; defaults to the gate's kind."
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "additionalProperties": false
+}
+```
+
+### gate_reconcile
+
+<!-- mcp-lint: allow -->
+The one call for every re-entry to a gate: a finished background rt gate wait, a doorbell, or words typed at a held gate. It re-reads the gate for up to 2 seconds with this session's id (stamping the pane's read as rt gate wait does); rt gate wait itself stays background Bash, since no tool blocks past its timeout. answered: returns {status: "answered", row, answers, decidedBy, writeIn, next, actOnWriteIn} and, under a run (runDb and stage), records the normalized answers map as a gate@1 decision on scope (default the scope whose extra.gate-source.<scope> names this gate, else the gate's kind) with the answer's by as the decider, unless the gate is stale (the scope's extra.gate-source.<scope> names a later gate), a decision on that scope already landed since the gate opened (alreadyReconciled), or record is false (the default on a review gate, which records its review shape with gate_record); it clears waiting-gate when it names this gate. closed: returns {status: "closed", closedReason, supersededBy}, clears waiting-gate and never invents an answer. Still open after 2 seconds: {status: "open"}, nothing written and waiting-gate left armed. The skill owns the gate and decides what to do next.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The gate id."
+    },
+    "record": {
+      "type": "boolean",
+      "description": "Record the answers map as the scope's gate@1 decision. Defaults true, except on a review gate (kind respond-plan, respond-post or review-post, or scope post, respond-plan or respond-post), where it defaults false because the site records its review shape with gate_record; pass true there only to record the answers map."
+    },
+    "runDb": {
+      "type": "string",
+      "description": "The run's runDb, under a pipeline run; the gate's run fields and decision are written there."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage asking; required with runDb."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The decision scope on the run; defaults to the scope whose extra.gate-source.<scope> names this gate (post for a review-post gate), else the gate's kind."
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false
+}
+```
+
+### gate_record
+
+<!-- mcp-lint: allow -->
+Record a gate decision on a run that no gate tool recorded at answer time: a review scope at its site's own point (respond-plan, respond-post and post after acting), or a decision handed in by the caller (answers plus decidedBy, for a board wrapper). runDb, stage and scope are required. gateId reads that answered gate (an open or closed gate is refused) and its answer's by is the decider. shape picks the selection: answers (the normalized answers map, never skipped), respond-plan ({threads, texts?, overrides?, notes?, code-changes} plus rows for the report), respond-post ({threads: {<id>: {post, resolve, text?, note?}}, held?}) or post ({findings, disposition, replies?, restored?}); the three review shapes record nothing when a next answer other than proceed is present. Cards come from source, sourcePath or review when passed, else from the run's extra.gate-source.<scope>. It always upserts its own gate, so a held respond-post resume re-records with held; it refuses only a stale gate, one whose scope's stored source names a different gate stored after this one opened. Returns {recorded, selection, decidedBy, rows?, answers, writeIn, next, actOnWriteIn, skipped?, runErrors?}. It records only; the skill acts.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The run's runDb; the decision is written there."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage recording."
+    },
+    "scope": {
+      "type": "string",
+      "description": "The decision scope on the run (respond-plan, respond-post, post, ...)."
+    },
+    "shape": {
+      "type": "string",
+      "enum": [
+        "answers",
+        "respond-plan",
+        "respond-post",
+        "post"
+      ],
+      "description": "How the selection is built; default answers."
+    },
+    "gateId": {
+      "type": "string",
+      "description": "An answered gate whose row is read; its answer's by is the decider."
+    },
+    "answers": {
+      "type": "object",
+      "description": "A handed decision's answers, recorded with decidedBy instead of a gate's row."
+    },
+    "decidedBy": {
+      "type": "string",
+      "description": "Who decided a handed decision (board, console, ...); required with answers."
+    },
+    "source": {
+      "type": "object",
+      "description": "A gate-ctx@1 source: {context?, questions}."
+    },
+    "sourcePath": {
+      "type": "string",
+      "description": "A .json gate-ctx@1 source file under the Claude Code temp root or an installed plugin or pack root."
+    },
+    "review": {
+      "type": "object",
+      "description": "Build the source from a review's findings first: findings inline or findingsPath (a .json file under a read root), and extras {target, reviewer?, round?, questions}.",
+      "properties": {
+        "findings": {
+          "type": "object"
+        },
+        "findingsPath": {
+          "type": "string"
+        },
+        "extras": {
+          "type": "object"
+        }
+      }
+    },
+    "contextDropped": {
+      "description": "respond-plan: true, or the question ids whose context never reached the gate.",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "held": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "respond-post: the thread ids held back from posting."
+    }
+  },
+  "required": [
+    "runDb",
+    "stage",
+    "scope"
   ],
   "additionalProperties": false
 }
@@ -558,7 +808,7 @@ GitLab only. Post one whole review in one call, exactly as GitLab's "Submit your
 ### mr_create
 
 <!-- mcp-lint: allow -->
-GitLab only. Create a merge request from an already-pushed sourceBranch into targetBranch. Pass targetBranch explicitly (read the default branch from git); it is never guessed. draft defaults to true. Write the title, and optionally the description, yourself (e.g. from the branch's commits). labels apply at creation; squash sets the MR's squash-on-merge flag right after it. Creates once and never retries. Returns iid, url (null when GitLab created the MR but reading it back failed) and, when squash was passed, squashApplied; squashApplied false with squashError means the MR exists, so set squash with mr_update rather than creating again. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+GitLab only. Create a merge request from an already-pushed sourceBranch into targetBranch. Pass targetBranch explicitly (read the default branch from git); it is never guessed. draft defaults to true. Write the title, and optionally the description, yourself (e.g. from the branch's commits). labels apply at creation; squash sets the MR's squash-on-merge flag right after it. Creates once and never retries. Returns iid, url (null when GitLab created the MR but reading it back failed) and, when squash was passed, squashApplied; squashApplied false with squashError means the MR exists, so set squash with mr_update rather than creating again. ifExists "return" first looks for an open MR on sourceBranch: when one exists it creates nothing and returns {iid, url, existing: true, targetBranch, draft, title, applied: false}, where applied false means the title, description, labels and squash you passed were not applied, and that MR may target a different branch, so compare its targetBranch with the one you asked for; otherwise it creates and the result adds existing false. A lookup error is returned and nothing is created. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -595,6 +845,12 @@ GitLab only. Create a merge request from an already-pushed sourceBranch into tar
     },
     "squash": {
       "type": "boolean"
+    },
+    "ifExists": {
+      "type": "string",
+      "enum": [
+        "return"
+      ]
     }
   },
   "required": [
@@ -656,7 +912,7 @@ GitLab only. Edit an open MR: title, description, addLabels, removeLabels (add a
 ### mr_upload
 
 <!-- mcp-lint: allow -->
-GitLab only. Upload one local image or video (png, jpg, jpeg, gif, webp, mp4, mov, webm; at most 50 MB) to the target project and get back url and markdown; paste the markdown into an MR description or note (mr_create, mr_update, mr_comment). Works before an MR exists. path must be absolute and under an allowed root: a worktree of the target repo, this user's Claude Code temp root (the session scratchpad lives there), rt's evidence folder ~/.mattstack/evidence/ (for screenshots you want to upload), a pipeline run's own evidence folder (~/.mattstack/work/<run id>/evidence/, for a run that exists on this machine), or a directory in the rt.mcp.uploadRoots setting; anything else, a directory, a file with other hard links, or a file whose bytes do not match its extension is refused. Uploads once; a timed-out upload may have landed, but an unused upload is harmless, so retrying is safe. Pass runId when the file is a pipeline run's evidence: the daemon then also refuses a file that run's evidence record does not list as an annotated image or a waived capture, and names the file. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+GitLab only. Upload local images or videos (png, jpg, jpeg, gif, webp, mp4, mov, webm; at most 50 MB) to the target project and get back url and markdown; pass path for one file or paths (1 to 20, never both) for several, which upload in order, report each file as {path, ok, url, markdown} or {path, ok: false, error} under results, and do not stop at a failure; paste the markdown into an MR description or note (mr_create, mr_update, mr_comment). Works before an MR exists. Every path must be absolute and under an allowed root: a worktree of the target repo, this user's Claude Code temp root (the session scratchpad lives there), rt's evidence folder ~/.mattstack/evidence/ (for screenshots you want to upload), a pipeline run's own evidence folder (~/.mattstack/work/<run id>/evidence/, for a run that exists on this machine), or a directory in the rt.mcp.uploadRoots setting; anything else, a directory, a file with other hard links, or a file whose bytes do not match its extension is refused. Uploads once; a timed-out upload may have landed, but an unused upload is harmless, so retrying is safe. Pass runId when the file is a pipeline run's evidence: the daemon then also refuses a file that run's evidence record does not list as an annotated image or a waived capture, and names the file. A composed board that hides part of a ticket image is refused until its redactions are confirmed (fast-browser compose --confirm), and an imported capture (a <stem>.cN.png whose sidecar says import) is refused: upload its board. A file under a run's evidence folder is checked against that run's record even without runId, and a run's saved ticket image (source ticket) is refused at its own path and as a byte copy anywhere. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -672,16 +928,20 @@ GitLab only. Upload one local image or video (png, jpg, jpeg, gif, webp, mp4, mo
     },
     "path": {
       "type": "string",
-      "description": "Absolute path of the file to upload."
+      "description": "Absolute path of the file to upload. Pass this or paths."
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "1 to 20 absolute paths, uploaded one at a time in order. Pass this or path."
     },
     "runId": {
       "type": "string",
       "description": "A pipeline run's id. With it, the file must be in that run's evidence record as an annotated image or a waived capture."
     }
   },
-  "required": [
-    "path"
-  ],
   "additionalProperties": false
 }
 ```
@@ -805,6 +1065,10 @@ GitLab only. Retry one CI job (jobId) or a whole pipeline (pipelineId) on an MR;
     },
     "pipelineId": {
       "type": "number"
+    },
+    "leaseMrUrl": {
+      "type": "string",
+      "description": "The MR or PR https URL whose CI lease this session must hold (or can claim) for the retry to run. Refused with retried: false while another owner holds a fresh lease."
     }
   },
   "additionalProperties": false
@@ -814,7 +1078,7 @@ GitLab only. Retry one CI job (jobId) or a whole pipeline (pipelineId) on an MR;
 ### mr_rebase
 
 <!-- mcp-lint: allow -->
-GitLab only. Ask GitLab to rebase the MR's source branch onto its target server-side (no checkout). GitLab accepts the request and rebases asynchronously, so re-read the MR before assuming the rebase finished or succeeded. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+GitLab only. Ask GitLab to rebase the MR's source branch onto its target server-side (no checkout). GitLab accepts the request and rebases asynchronously: without `wait` the reply only says the request was accepted, so re-read the MR before assuming the rebase finished or succeeded. With `wait: true` the tool reads the MR, asks for the rebase, then re-reads it every 5 seconds for up to `maxWaitSeconds` (1 to 600, default 90) and returns one of: {status: "rebased", sha, previousSha} when the source branch sha moved; {status: "failed", mergeError, conflicts, sha} when, with no rebase running, GitLab reports a merge error or conflicts; {status: "current", sha} when nothing moved and the branch is not behind its target; {status: "unchanged", sha} when nothing moved across two reads and GitLab does not say whether the branch was behind, so it may already have been current; {status: "pending", sha, rebaseInProgress, lastError?} when the budget ran out, so call again or look at the MR. A failed re-read counts as a poll and is reported as lastError only if the budget ends on it. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -831,6 +1095,16 @@ GitLab only. Ask GitLab to rebase the MR's source branch onto its target server-
     "mrUrl": {
       "type": "string",
       "description": "The MR's https URL; supplies both the repo and iid."
+    },
+    "wait": {
+      "type": "boolean",
+      "description": "Poll the MR until it rebased, failed, was already current, stayed unchanged or the budget ran out."
+    },
+    "maxWaitSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600,
+      "description": "Polling budget in seconds with wait; default 90. Under 5 means one read, no poll."
     }
   },
   "additionalProperties": false
@@ -868,26 +1142,6 @@ GitLab only. Merge the MR now (GitLab still enforces approvals and pipeline rule
       "type": "boolean"
     }
   },
-  "additionalProperties": false
-}
-```
-
-### mr_map
-
-<!-- mcp-lint: allow -->
-Open MRs for a repo joined to the local worktrees holding their branches. Lists ALL open MRs for the repo (not only yours). repo is the repo's registered name: either its serialized identity (e.g. remote:gitlab.com%2Facme%2Facme-dev) or its short repo-label alias.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "repo": {
-      "type": "string"
-    }
-  },
-  "required": [
-    "repo"
-  ],
   "additionalProperties": false
 }
 ```
@@ -965,6 +1219,13 @@ Open a gate asking the herd operator one or more questions, using this worker pa
                 }
               ]
             }
+          },
+          "writeIn": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Lets the human answer this question in their own words instead of a pick; the answer then arrives as {writeIn}. Set it only on a decision question whose free-text answer you can act on, never on next."
           },
           "context": {
             "type": "string",
@@ -1093,7 +1354,7 @@ Start a pipeline run and get back its runDb. flags is the compiled run-start fla
 ### run_stage
 
 <!-- mcp-lint: allow -->
-Record a stage transition on a run: start, done, fail (with reason and detailPath) or redirect (with to and reason).
+Record a stage transition on a run: start, done, fail (with reason and detailPath) or redirect (with to and reason). A start on a stage whose latest attempt is still running ends that attempt as redirected (superseded) and begins the next one.
 
 ```json
 {
@@ -1140,7 +1401,7 @@ Record a stage transition on a run: start, done, fail (with reason and detailPat
 ### run_field_set
 
 <!-- mcp-lint: allow -->
-Write one run field (key, value) as produced by a stage.
+Write one run field (key, value) as produced by a stage. With ifSha256, the write lands only if the field's current value still has that sha256 (hex; an unset field hashes as the empty string); otherwise it errors with "changed since it was read" and writes nothing, so a caller that read, merged and writes back cannot overwrite another process's write in between.
 
 ```json
 {
@@ -1162,6 +1423,10 @@ Write one run field (key, value) as produced by a stage.
     },
     "stage": {
       "type": "string"
+    },
+    "ifSha256": {
+      "type": "string",
+      "description": "The lowercase hex sha256 of the value you read; the empty string's when the field was unset."
     }
   },
   "required": [
@@ -1296,10 +1561,268 @@ The run's stages, fields and decisions.
 }
 ```
 
+### run_enter
+
+<!-- mcp-lint: allow -->
+Start, resume or inherit a pipeline run and return where it stands, or the candidate runs to choose between. It returns results and opens no gates; the skill asks any question the result raises.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "flags": {
+      "type": "string",
+      "description": "The compiled run-start flag string verbatim (--repo and --work-type come from it)."
+    },
+    "skillDir": {
+      "type": "string",
+      "description": "Absolute path of the loaded skill's directory (CLAUDE_SKILL_DIR)."
+    },
+    "stage": {
+      "type": "string",
+      "description": "A standalone verb's own stage name; the run's manifest is that one stage."
+    },
+    "pipeline": {
+      "type": "string",
+      "description": "The pipelines.json key to run when the flags' --pipeline is not one."
+    },
+    "runDb": {
+      "type": "string",
+      "description": "The runDb a parent run handed down; inherited when its run is still running."
+    },
+    "resume": {
+      "type": "string",
+      "description": "A run id in this repo to resume."
+    },
+    "fresh": {
+      "type": "boolean",
+      "description": "Start a new run without listing candidates."
+    },
+    "ticket": {
+      "type": "string"
+    },
+    "spawnedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "flags",
+    "skillDir"
+  ],
+  "additionalProperties": false
+}
+```
+
+### run_next
+
+<!-- mcp-lint: allow -->
+Read how a stage ended and move the run on: starts the next stage when every produce is set, or reports failed, held, waiting or the last stage. It returns results and opens no gates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned. Always pass it; omitted, cwd is required and the run is this session's run, else the newest running one whose worktree holds cwd."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Absolute worktree path, used only when runDb is omitted."
+    },
+    "stage": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage"
+  ],
+  "additionalProperties": false
+}
+```
+
+### run_resolve
+
+<!-- mcp-lint: allow -->
+Apply a gate's answer to a stage: retry, redirect, iterate, hold, abandon or done. It applies the answer it is given and opens no gates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned. Always pass it; omitted, cwd is required and the run is this session's run, else the newest running one whose worktree holds cwd."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Absolute worktree path, used only when runDb is omitted."
+    },
+    "stage": {
+      "type": "string"
+    },
+    "next": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "redirect",
+        "iterate",
+        "hold",
+        "abandon",
+        "done"
+      ]
+    },
+    "to": {
+      "type": "string"
+    },
+    "note": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The attempt the gate was asked about (the <n> in its scope); a retried call for an answer already applied returns it with repeated: true."
+    },
+    "decidedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage",
+    "next",
+    "decidedBy"
+  ],
+  "additionalProperties": false
+}
+```
+
+### run_hold
+
+<!-- mcp-lint: allow -->
+Record that a stage is held, with an optional reason. It returns the result and opens no gates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned. Always pass it; omitted, cwd is required and the run is this session's run, else the newest running one whose worktree holds cwd."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Absolute worktree path, used only when runDb is omitted."
+    },
+    "stage": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "decidedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage",
+    "decidedBy"
+  ],
+  "additionalProperties": false
+}
+```
+
+### run_close
+
+<!-- mcp-lint: allow -->
+Close a standalone verb's own run as done, failed or abandoned; a run the verb inherited is refused. It returns the result and opens no gates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned. Always pass it; omitted, cwd is required and the run is this session's run, else the newest running one whose worktree holds cwd."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Absolute worktree path, used only when runDb is omitted."
+    },
+    "workType": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "done",
+        "failed",
+        "abandoned"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "detailPath": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "workType",
+    "stage",
+    "outcome"
+  ],
+  "additionalProperties": false
+}
+```
+
+### run_budget
+
+<!-- mcp-lint: allow -->
+Count against a named budget on the run and return spent, remaining and whether it is exhausted. It counts past the limit, never refuses and opens no gates.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned. Always pass it; omitted, cwd is required and the run is this session's run, else the newest running one whose worktree holds cwd."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Absolute worktree path, used only when runDb is omitted."
+    },
+    "key": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "increment": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "stage": {
+      "type": "string",
+      "description": "Scopes the counter to this stage's latest attempt."
+    }
+  },
+  "required": [
+    "key",
+    "limit"
+  ],
+  "additionalProperties": false
+}
+```
+
 ### run_list
 
 <!-- mcp-lint: allow -->
-List runs the daemon knows, newest first, optionally narrowed to one repo directory name.
+List runs the daemon knows, newest first, optionally narrowed to one repo directory name and to runs of the given pipelines.
 
 ```json
 {
@@ -1307,6 +1830,13 @@ List runs the daemon knows, newest first, optionally narrowed to one repo direct
   "properties": {
     "repo": {
       "type": "string"
+    },
+    "pipelines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Keep only runs of these pipelines; a run recorded without a pipeline counts as work."
     }
   },
   "additionalProperties": false
@@ -1333,10 +1863,6 @@ GitLab only. One MR by iid, in full: opened, merged or closed. Read from GitLab 
     "mrUrl": {
       "type": "string",
       "description": "The MR's https URL; supplies both the repo and iid."
-    },
-    "maxAgeMs": {
-      "type": "number",
-      "description": "Accepted and ignored; every read is live."
     }
   },
   "additionalProperties": false
@@ -1346,7 +1872,7 @@ GitLab only. One MR by iid, in full: opened, merged or closed. Read from GitLab 
 ### mr_list
 
 <!-- mcp-lint: allow -->
-GitLab only. A summary of each matching MR of the target project (iid, title, state, draft, sourceBranch, targetBranch, author username, webUrl, detailedMergeStatus), most recently updated first. Filters: author (a username, or "me"), sourceBranch, targetBranch, state (default opened, which includes drafts), search (title and description, so a ticket id finds its MR). Returns {mrs, truncated}: at most limit rows (default 50, maximum 200), truncated true when GitLab had more. With targetBranch the body also carries targetBranch and full (true when nothing was cut); use that to prove a branch has no stacked children. Use mr_view for one MR in full. Read from GitLab on every call: any MR the token can see, whoever wrote it. A GitLab refusal comes back as GitLab's own text. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+GitLab only. A summary of each matching MR of the target project (iid, title, state, draft, sourceBranch, targetBranch, author username, webUrl, detailedMergeStatus, mergedAt), most recently updated first. Filters: author (a username, or "me"), sourceBranch, targetBranch, state (default opened, which includes drafts), search (title and description, so a ticket id finds its MR). Returns {mrs, truncated}: at most limit rows (default 50, maximum 200), truncated true when GitLab had more. With targetBranch the body also carries targetBranch and full (true when nothing was cut); use that to prove a branch has no stacked children. Use mr_view for one MR in full. Read from GitLab on every call: any MR the token can see, whoever wrote it. A GitLab refusal comes back as GitLab's own text. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -1451,6 +1977,13 @@ GitLab only. The MR's discussion threads, fetched from GitLab on every call. Nam
     "refresh": {
       "type": "boolean",
       "description": "Accepted and ignored; every read is live."
+    },
+    "filter": {
+      "type": "string",
+      "enum": [
+        "unresolved-human"
+      ],
+      "description": "unresolved-human keeps unresolved threads started by a person, drops system notes, and adds dropped counts."
     }
   },
   "additionalProperties": false
@@ -1484,6 +2017,52 @@ GitLab only. The MR's head pipeline, carrying sha, ref and mergeRequestEventType
     },
     "jobId": {
       "type": "number"
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### pipeline_jobs
+
+<!-- mcp-lint: allow -->
+GitLab only. The jobs of one pipeline and its same-project child pipelines: {state: "listed", pipeline, jobs, bridges}. A job row is {jobId, name, stage, status, allowFailure, blocking, pipelineId, attempt, webUrl}; only the latest run of each job is listed, attempt counts its runs. bridges lists every bridge with its downstream pipeline and a crossProject flag. pipelineId defaults to the MR's head pipeline; scope is one GitLab job scope (failed, success, running, pending, manual, canceled, skipped, created); name keeps jobs whose name contains it. Read a job's log with mr_job_trace. Read from GitLab on every call: any MR the token can see, whoever wrote it. A GitLab refusal comes back as GitLab's own text. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "iid": {
+      "type": "number",
+      "description": "The MR's iid; omit when mrUrl is given, which supplies it."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "The MR's https URL; supplies both the repo and iid."
+    },
+    "pipelineId": {
+      "type": "number"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "failed",
+        "success",
+        "running",
+        "pending",
+        "manual",
+        "canceled",
+        "skipped",
+        "created"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Substring of the job name."
     }
   },
   "additionalProperties": false
@@ -1536,6 +2115,178 @@ GitLab only. Part of one CI job's plain-text trace, ANSI escapes stripped, cappe
   "required": [
     "jobId"
   ],
+  "additionalProperties": false
+}
+```
+
+### mr_posted_since
+
+<!-- mcp-lint: allow -->
+GitLab only. Whether this account (or `by`) already posted on the MR: one live thread read, nothing posted, nothing judged beyond the match. `since` is epoch milliseconds or an ISO time; a note counts when it is at or after `since`. `by` defaults to "me", the token's own user. `threads` [{discussionId, body?}]: posted when the discussion holds a note whose body equals `body` (any author, any time; CRLF and trailing spaces ignored), or a note by `by` at or after `since`; each row is {discussionId, found, posted, noteId, via: "body" | "author" | null}, found false when GitLab no longer returns the discussion. `items` [{id, body?, contains?, path?, line?}]: posted when a note by `by` at or after `since` has that `body` or contains that text, and, when `path` or `line` is given, sits at that new-side position; each row is {id, posted, noteId, discussionId}. Pass `threads`, `items` or both. Returns {by, since, threads, items, notes}, where `notes` is every non-system note by `by` at or after `since` (body cut at 2000 characters). System notes never match. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "iid": {
+      "type": "number",
+      "description": "The MR's iid; omit when mrUrl is given, which supplies it."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "The MR's https URL; supplies both the repo and iid."
+    },
+    "since": {
+      "type": [
+        "number",
+        "string"
+      ],
+      "description": "Epoch milliseconds or an ISO time, e.g. 2026-10-16T10:00:00Z."
+    },
+    "by": {
+      "type": "string",
+      "description": "A GitLab username, or \"me\" (the default) for the token's own user."
+    },
+    "threads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "discussionId": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "discussionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "contains": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "since"
+  ],
+  "additionalProperties": false
+}
+```
+
+### respond_post_execute
+
+<!-- mcp-lint: allow -->
+GitLab only. Receive-review's post side in one call: it acts only on the respond-plan and respond-post decisions recorded on the run, which must carry the gate-source fields `gate_open {runDb}` writes, after checking each against its gate source and registry answer, and refuses before anything moves when one is missing, stale or does not match. It reads the threads once, so a reply already on GitLab counts as alreadyPosted and a resolved thread as alreadyResolved; it pushes the run's branch from `tree` (never forced) only when a fix row is picked, the MR is still opened, and HEAD, @{push} and @{u} all name that branch on origin; `tree` must be a checkout of the MR's repo and is checked only when a push is due; then it posts the replies and resolves the threads. Pushes, replies and resolves are each retried once, and a reply that errored is re-read first so it never posts twice. Threads it could not finish come back in held[] with the hold field set to held under `stage`, for the skill's off-script gates; the respond-post decision is re-recorded with those ids as `held`, and a later call acts only on them. Returns {mr, pushed, posted, alreadyPosted, resolved, alreadyResolved, held, recorded, hold, writeErrors?}, where writeErrors carries the text of a failed re-record or hold write. One caller per run at a time: nothing stops two panes running it on the same run at once. On GitHub it refuses; reply to and resolve the threads with gh.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned."
+    },
+    "tree": {
+      "type": "string",
+      "description": "Absolute path of the registered worktree root a fix push goes from."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage the hold field is written under."
+    }
+  },
+  "required": [
+    "runDb",
+    "tree",
+    "stage"
+  ],
+  "additionalProperties": false
+}
+```
+
+### mr_resolve_branch
+
+<!-- mcp-lint: allow -->
+GitLab only. An MR to its branch and the registered trees on it, for checkout: one MR read and one worktree list, nothing provisioned. Works on opened, merged and closed MRs. Returns {iid, state, title, author (username), sourceBranch, targetBranch, webUrl, trees: [{name, path}]}, where trees holds the registered worktrees whose branch equals sourceBranch exactly: usually none or one, more only for a duplicate branch. Call worktree_provision to make a tree when trees is empty. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "iid": {
+      "type": "number",
+      "description": "The MR's iid; omit when mrUrl is given, which supplies it."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "The MR's https URL; supplies both the repo and iid."
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### mr_map
+
+<!-- mcp-lint: allow -->
+GitLab only. A repo's open MRs joined to the local worktrees holding their branches, read live from GitLab on every call. Lists every author's MRs unless `author` is passed (a username, or "me" for the token's own user). Each row is {ref, iid, title, author, sourceBranch, targetBranch, draft, stacked, worktree, dirty, mrState, ciStatus}: stacked is whether targetBranch is not the project's default branch (null when the default branch could not be read); worktree is the path of the registered tree whose branch equals sourceBranch exactly (the last one when two share it), or null; dirty is whether that tree has uncommitted changes (null with no tree or on a git error); ciStatus is the pipeline status from the daemon's synced MR list, null when that list lacks the MR. Returns {rows, complete}, where complete false means the repo has more than 200 open MRs and only the first 200 are listed. `repo` is a legacy alias for repoName; pass one, not both. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "An MR URL in the target project; names the repo, its iid is not used."
+    },
+    "repo": {
+      "type": "string",
+      "description": "Legacy alias for repoName; pass one, not both."
+    },
+    "author": {
+      "type": "string",
+      "description": "A GitLab username, or \"me\" for the token's own user. Omit for every author."
+    }
+  },
   "additionalProperties": false
 }
 ```
@@ -1641,7 +2392,7 @@ GitLab only. One read-only GET against GitLab's REST API, for a fact no other to
 ### branch_stack
 
 <!-- mcp-lint: allow -->
-Whether the tree's checked-out branch is a member of a tracked stack. Returns {branch, member, stackStore}; a member also carries stack (its name), parent, root and children. stackStore is "unavailable" when the stack store could not be read, in which case member: false is not proof. Reads no forge. tree is the absolute path of a registered checkout or worktree root.
+Whether the tree's checked-out branch is a member of a tracked stack. Returns {branch, member, stackStore}; a member also carries stack (its name), parent, root and children. stackStore is "unavailable" when the stack store could not be read, in which case member: false is not proof. Reads no forge. tree is the absolute path of a registered checkout or worktree, or a directory inside one, which resolves to that tree's root; the result's tree is the root it read.
 
 ```json
 {
@@ -1649,7 +2400,7 @@ Whether the tree's checked-out branch is a member of a tracked stack. Returns {b
   "properties": {
     "tree": {
       "type": "string",
-      "description": "Absolute path of a registered checkout or worktree root."
+      "description": "Absolute path of a registered checkout or worktree, or a directory inside one."
     }
   },
   "required": [
@@ -1662,7 +2413,7 @@ Whether the tree's checked-out branch is a member of a tracked stack. Returns {b
 ### git_push
 
 <!-- mcp-lint: allow -->
-Push the tree's current branch as exactly one ref (HEAD to refs/heads/<branch>; no tags, no submodules) to the same-named branch on its upstream's remote, or to origin/<branch> with setUpstream: true, which also makes that the upstream. Force is only ever --force-with-lease --force-if-includes. Refuses a detached HEAD; main, master and origin's default branch, and any push when origin's default cannot be read; a branch with no upstream unless setUpstream: true; an upstream with a different branch name, or one that is its own remote's default branch, or whose remote's default branch cannot be read (setUpstream: true pushes as origin/<branch> instead).
+Push the tree's current branch as exactly one ref (HEAD to refs/heads/<branch>; no tags, no submodules) to the same-named branch on its upstream's remote, or to origin/<branch> with setUpstream: true, which also makes that the upstream. Force is only ever --force-with-lease --force-if-includes. Refuses a detached HEAD; main, master and origin's default branch, and any push when origin's default cannot be read; a branch with no upstream unless setUpstream: true; an upstream with a different branch name, or one that is its own remote's default branch, or whose remote's default branch cannot be read (setUpstream: true pushes as origin/<branch> instead). Returns the pushed sha and, read from GitLab just before the push, the branch's open MR (mr: {iid, url} or null) and that MR's latest pipeline id (priorPipelineId), so a CI watch can tell the push's pipeline from the one already there. mrLookup is "unavailable" when the forge could not be read (a GitHub repo, the daemon down), in which case mr: null is not proof there is none; the push goes ahead either way.
 
 ```json
 {
@@ -1670,13 +2421,17 @@ Push the tree's current branch as exactly one ref (HEAD to refs/heads/<branch>; 
   "properties": {
     "tree": {
       "type": "string",
-      "description": "Absolute path of a checkout or worktree of a repo registered with rt."
+      "description": "Absolute path of a checkout or worktree of a repo registered with rt, or a directory inside one, which resolves to that tree's root (the result's tree)."
     },
     "forceWithLease": {
       "type": "boolean"
     },
     "setUpstream": {
       "type": "boolean"
+    },
+    "leaseMrUrl": {
+      "type": "string",
+      "description": "The MR or PR https URL whose CI lease this session must hold (or can claim) for the push to run. Refused with pushed: false while another owner holds a fresh lease."
     }
   },
   "required": [
@@ -1697,7 +2452,7 @@ Fast-forward the tree's current branch from its upstream (--ff-only). A diverged
   "properties": {
     "tree": {
       "type": "string",
-      "description": "Absolute path of a checkout or worktree of a repo registered with rt."
+      "description": "Absolute path of a checkout or worktree of a repo registered with rt, or a directory inside one, which resolves to that tree's root (the result's tree)."
     }
   },
   "required": [
@@ -1718,7 +2473,7 @@ Rebase the tree's current branch onto a named branch or ref; a remote-tracking r
   "properties": {
     "tree": {
       "type": "string",
-      "description": "Absolute path of a checkout or worktree of a repo registered with rt."
+      "description": "Absolute path of a checkout or worktree of a repo registered with rt, or a directory inside one, which resolves to that tree's root (the result's tree)."
     },
     "onto": {
       "type": "string"
@@ -1737,7 +2492,7 @@ Rebase the tree's current branch onto a named branch or ref; a remote-tracking r
 ### branch_sync
 
 <!-- mcp-lint: allow -->
-Bring the tree's branch current in one call through rt sync: fetch origin; if the branch diverged from origin only because GitLab rebased it (every local commit has a patch-equivalent on origin), reset to origin; rebase onto the default branch; push with --force-with-lease when anything changed. A branch only ahead of origin is not refused, but like any branch it is pushed only when the reset or rebase actually changed it; a branch already at the default branch's tip is left alone, so use git_push to publish new commits. Refuses up front, naming the commits where there are any: a diverged branch whose local commits have no equivalent on origin (the reset would lose them); a branch only behind origin (run git_pull first); origin commits a kept local rewrite would force-push over; a rebase already in progress; a detached HEAD; main, master or the default branch; a branch name rt sync cannot pass safely or that is ambiguous with a tag or other ref; a local ref shadowing origin/<branch> or origin/<default>; a push destination redirected by git config; a gitq stack member, or a branch whose stack membership cannot be verified. A rebase conflict returns status conflict with rt sync's bundle and leaves the rebase paused.
+Bring the tree's branch current in one call through rt sync: fetch origin; if the branch diverged from origin only because GitLab rebased it (every local commit has a patch-equivalent on origin), reset to origin; rebase onto the default branch; push with --force-with-lease when anything changed. A branch only ahead of origin is not refused, but like any branch it is pushed only when the reset or rebase actually changed it; a branch already at the default branch's tip is left alone, so use git_push to publish new commits. Refuses up front, naming the commits where there are any: a diverged branch whose local commits have no equivalent on origin (the reset would lose them); a branch only behind origin (run git_pull first); origin commits a kept local rewrite would force-push over; a rebase already in progress; a detached HEAD; main, master or the default branch; a branch name rt sync cannot pass safely or that is ambiguous with a tag or other ref; a local ref shadowing origin/<branch> or origin/<default>; a push destination redirected by git config; a gitq stack member, or a branch whose stack membership cannot be verified. Returns {kind, branch, oldHead, newHead, pushed, refusal}, oldHead and newHead being the branch ref before and after. kind is synced (the branch moved; pushed says origin now has it), up-to-date (nothing moved or was pushed), dirty-tree (uncommitted or untracked changes, listed in paths; nothing ran), conflict (rt sync's bundle, the rebase left paused; nothing was pushed, though newHead differs from oldHead when rt sync first reset a GitLab-rebased branch to origin), stacked-refused (the branch is in a stack; stackCheck carries rt sync's refusal and refusal names the tool to run), stack-unverified (the stack check could not run, so nothing ran; refusal says why and names no tool), push-refused (the rebase landed locally but the push failed) or error (any other refusal or failure, its reason in refusal).
 
 ```json
 {
@@ -1745,7 +2500,7 @@ Bring the tree's branch current in one call through rt sync: fetch origin; if th
   "properties": {
     "tree": {
       "type": "string",
-      "description": "Absolute path of a checkout or worktree of a repo registered with rt."
+      "description": "Absolute path of a checkout or worktree of a repo registered with rt, or a directory inside one, which resolves to that tree's root (the result's tree)."
     }
   },
   "required": [
@@ -1755,10 +2510,38 @@ Bring the tree's branch current in one call through rt sync: fetch origin; if th
 }
 ```
 
+### branch_sync_sweep
+
+<!-- mcp-lint: allow -->
+Run branch_sync, one branch at a time, on every branch of yours with an open MR in the repo that has a local worktree, or with branches, only on those of them named there. A conflict on one branch leaves that rebase paused for you and the sweep moves on to the next. Your open MRs are read from GitLab (author: me) or GitHub (gh pr list --author @me). Returns {repoName, results, noTree, complete}: results holds one branch_sync result per branch (kind, branch, oldHead, newHead, pushed, refusal), each with its tree and mr {iid, url}; noTree lists your open-MR branches that have no worktree, which the sweep skips; complete is false when the forge may have cut the MR list short. With branches, the result also has notOpen: the named branches with no open MR of yours, which the sweep skips; when complete is false a branch there may only have fallen past the forge's cut, so notOpen is not proof it has no MR. Opens no gate and pushes only what branch_sync itself pushes. repoName is the repo's serialized identity, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Sync only these of your open-MR branches, so an MR opened after you chose stays untouched. Omit to sweep every one."
+    }
+  },
+  "required": [
+    "repoName"
+  ],
+  "additionalProperties": false
+}
+```
+
 ### worktree_provision
 
 <!-- mcp-lint: allow -->
-Claim a worktree for a ticket or branch (from the on-deck pool, or freshly created) and get back its path; then enter it with EnterWorktree in path mode. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+Claim a worktree for a ticket or branch (from the on-deck pool, or freshly created) and get back its path; then enter it with EnterWorktree in path mode. A success says what happened in "kind": "provisioned" (a tree was claimed or created), "reused" (an existing tree was returned) or "precheck" (nothing was created; see precheck). A refusal comes back as an error, "refused" in the JSON form. Options, all off by default. A call that uses none of them gets plain-text refusals, as always. Using any of codes, precheck, reuse, runDb or budget makes every refusal JSON text with a code (stage alone does not). codes: refusals as JSON with a code. The codes are branch-attached, branch-duplicated, branch-unresolved, tree-held, busy, repo-unknown, create-failed, checkout-failed, claim-write-failed, handoff-write-failed, unsafe-ref, daemon-unreachable, daemon-outdated and error. precheck: report the branch a provision would use and the trees already on it, and create nothing. reuse: hand back the tree already on the branch when it is claimed or not managed by rt, instead of provisioning. In ticket mode a local branch that survives its tree is checked out again. Provisions as usual when there is nothing to reuse. A claimed tree whose owner is neither the owner passed nor this herd ("herd:<HERD_ID>") is held by someone else: reuse refuses it with tree-held, naming the owner and claimedAt. takeOver: true reuses it anyway; pass it only when a human picked that tree. The owner is asserted by the caller, never checked, so it guards a caller that follows its skill, not a deliberate one. runDb and stage: write the tree's branch and worktree path to that run (stage defaults to "provision"). The result says recorded, or recordError when a write failed. Precheck and refusals write nothing. budget {key, limit}, with runDb: each refusal is counted through run_budget, and the result's budget shows what is spent and left. The stage must already be started on the run (run_stage start), or budget holds an error instead of a count; it also holds an error when run_budget is missing. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -1786,6 +2569,48 @@ Claim a worktree for a ticket or branch (from the on-deck pool, or freshly creat
     },
     "owner": {
       "type": "string"
+    },
+    "codes": {
+      "type": "boolean",
+      "description": "Refusals come back as JSON text with a machine-readable code instead of prose."
+    },
+    "precheck": {
+      "type": "boolean",
+      "description": "Only report the branch a provision would use and the trees already on it; nothing is created. Not with reuse."
+    },
+    "reuse": {
+      "type": "boolean",
+      "description": "Return the tree already on the branch (an unmanaged or claimed one) instead of provisioning; provisions only when none is. Not with precheck."
+    },
+    "takeOver": {
+      "type": "boolean",
+      "description": "With reuse: reuse a tree another owner holds instead of refusing tree-held. Only after a human picked that tree."
+    },
+    "runDb": {
+      "type": "string",
+      "description": "Absolute path of a run's state.db; the tree's branch and worktree path are written to that run."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The run stage those writes and the budget belong to. Default \"provision\"."
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "key",
+        "limit"
+      ],
+      "additionalProperties": false,
+      "description": "Count each refusal against this limit through run_budget. Needs runDb."
     }
   },
   "required": [
@@ -1876,7 +2701,7 @@ Start a herd (room, workspace, gate subscription) for this shepherd session. rep
 ### herd_spawn
 
 <!-- mcp-lint: allow -->
-Spawn a worker pane for a job (provisions its worktree, launches claude with the brief). brief is an absolute path to a .md brief file (herd_brief's out) inside the Claude Code temp root or an installed plugin or pack root; its contents become the worker's prompt and must not start with "-"; omitted, the job's stored brief is reused. account, model and effort are plain tokens. Only the herd's shepherd session may call it. Takes minutes.
+Spawn a worker pane for a job (provisions its worktree, launches claude with the brief). brief is an absolute path to a .md brief file (herd_brief's out) inside the Claude Code temp root or an installed plugin or pack root; its contents become the worker's prompt and must not start with "-"; omitted, the job's stored brief is reused. tree names a registered tree to reuse instead of provisioning (a tree name, never a directory). A job that already has a worktree on disk is refused without tree: relaunch it with herd_respawn. account, model and effort are plain tokens. A spawn into a tree another job already holds is a guest (a reviewer): it ticks the host's reviewerRounds budget and returns it as reviewerRound {host, key, budget}. Only the herd's shepherd session may call it. Takes minutes.
 
 ```json
 {
@@ -1904,11 +2729,234 @@ Spawn a worker pane for a job (provisions its worktree, launches claude with the
     },
     "disposable": {
       "type": "boolean"
+    },
+    "tree": {
+      "type": "string",
+      "description": "A registered tree's name; never a directory."
     }
   },
   "required": [
     "job"
   ],
+  "additionalProperties": false
+}
+```
+
+### herd_respawn
+
+<!-- mcp-lint: allow -->
+Relaunch a job's agent in its existing worktree (no provisioning). brief, account, model and effort follow herd_spawn's rules; omitted, the job's stored brief and launch settings are reused. Only the herd's shepherd session may call it. Takes minutes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "job": {
+      "type": "string"
+    },
+    "brief": {
+      "type": "string",
+      "description": "Absolute path to the brief file; its contents are sent, not the path."
+    },
+    "model": {
+      "type": "string"
+    },
+    "effort": {
+      "type": "string"
+    },
+    "account": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job"
+  ],
+  "additionalProperties": false
+}
+```
+
+### herd_gate_answer
+
+<!-- mcp-lint: allow -->
+Answer one of this herd's open or parked gates as the shepherd. Answer values must be the gate's option VALUES verbatim; a bad value returns status refused with each question's validValues and posts nothing. Returns status recorded, or conflict with the winning answer when another answer landed first. Only the herd's shepherd session may call it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "gate": {
+      "type": "string"
+    },
+    "answers": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "note": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string",
+                "pattern": "\\S",
+                "description": "Replacement for text the gate offered (an edited reply), used in its place. Comments go in note, never here."
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "writeIn": {
+                "type": "string",
+                "pattern": "\\S",
+                "description": "The human's own answer, for a question opened with writeIn: true. Sent alone, never beside value, note or text."
+              }
+            },
+            "required": [
+              "writeIn"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "gate",
+    "answers"
+  ],
+  "additionalProperties": false
+}
+```
+
+### herd_gate_park
+
+<!-- mcp-lint: allow -->
+Park one of this herd's open gates. Only the herd's shepherd session may call it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "gate": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "gate"
+  ],
+  "additionalProperties": false
+}
+```
+
+### herd_diagnose
+
+<!-- mcp-lint: allow -->
+Diagnose a job that looks stuck: its pane state, open gates, last gate and watchdog strikes, with a verdict. Never returns pane text. Only the herd's shepherd session may call it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "job": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job"
+  ],
+  "additionalProperties": false
+}
+```
+
+### herd_nudge
+
+<!-- mcp-lint: allow -->
+Nudge a job about an answered gate it has not picked up, one rung up the ladder (a DM, then the pane) within its budget. Only the herd's shepherd session may call it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "job": {
+      "type": "string"
+    },
+    "gate": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "job",
+    "gate"
+  ],
+  "additionalProperties": false
+}
+```
+
+### herd_lanes
+
+<!-- mcp-lint: allow -->
+Read every job's lane (or one job's): branch drift, files shared with other jobs, and the merge state of its PR or MR. Only the herd's shepherd session may call it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "herd": {
+      "type": "string",
+      "description": "Herd id; defaults to HERD_ID, else the sole active herd."
+    },
+    "job": {
+      "type": "string"
+    }
+  },
   "additionalProperties": false
 }
 ```
@@ -2530,7 +3578,7 @@ Read the MR's CI attendant lease: {lease: <fresh lease or null>, stale: <a stale
 ### ci_watch
 
 <!-- mcp-lint: allow -->
-GitLab only. Watch the MR's pipeline for the pushed commit sha until it settles or maxWaitSeconds (default 300, cap 1800) passes, polling every intervalSeconds (default 30, 10 to 120, and never more than half the lease's ttlSeconds). Only a pipeline for sha counts: a branch pipeline by its sha, a merged-results or merge-train pipeline by its merge commit's parents, or (fast-forward trains) by being new since the push; pass priorPipelineId (the head pipeline id read before pushing) so that proof never stalls; a result that proved it without one carries priorPipelineId to pass on the next call. Every poll heartbeats this session's CI lease and returns state lease_lost the moment another owner holds the MR; with underBoardLease (a doctor the board launched) it only reads the lease and needs a fresh board doctor lease. Returns state (success, success_with_warnings, failed, canceled, skipped, manual when settled; failed also as soon as a blocking job fails while the pipeline still runs; running or waiting means call again; superseded, lease_lost or aborted end the watch), the pipeline with sha and ref, failedJobs listing every failed job, with a trace tail on the first five blocking ones (jobs in same-project downstream pipelines included; read any other job's log with mr_job_trace), blockingFailures, lease, budget and next. budget is {minutes, elapsedMinutes, spent}, measured from the watched pipeline's createdAt against the ci.watch.budgetMinutes setting (default 75), or null while no pipeline for sha exists; a pipeline still running once spent is true returns running at once, so stop watching it. Chat messages reach you only between calls, so a long maxWaitSeconds delays them. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+GitLab only. Watch the MR's pipeline for the pushed commit sha until it settles or maxWaitSeconds (default 300, cap 1500) passes, polling every intervalSeconds (default 30, 10 to 120, and never more than half the lease's ttlSeconds). Only a pipeline for sha counts: a branch pipeline by its sha, a merged-results or merge-train pipeline by its merge commit's parents, or (fast-forward trains) by being new since the push; pass priorPipelineId (the head pipeline id read before pushing) so that proof never stalls; a result that proved it without one carries priorPipelineId to pass on the next call. Every poll heartbeats this session's CI lease and returns state lease_lost the moment another owner holds the MR; with underBoardLease (a doctor the board launched) it only reads the lease and needs a fresh board doctor lease. Returns state (success, success_with_warnings, failed, canceled, skipped, manual when settled; failed also as soon as a blocking job fails while the pipeline still runs; running or waiting means call again; superseded, lease_lost or aborted end the watch), the pipeline with sha and ref, failedJobs listing every failed job, with a trace tail on the first five blocking ones (jobs in same-project downstream pipelines included; read any other job's log with mr_job_trace), blockingFailures, lease, budget and next. budget is {minutes, elapsedMinutes, spent}, measured from the watched pipeline's createdAt against the ci.watch.budgetMinutes setting (default 75), or null while no pipeline for sha exists; a pipeline still running once spent is true returns running at once, so stop watching it. Chat messages reach you only between calls, so a long maxWaitSeconds delays them. With attend: true the call attends the MR itself: every poll heartbeats this session's lease or, when none is held, claims it (holder, with the MR's source branch); a lease that vanishes is re-claimed at most 2 times per commit, and the lease is kept alive between calls until ci_lease_release. The budget window, prior pipeline id and waiting clock persist per MR, so later calls need not pass budgetMinutes or priorPipelineId, and a pipeline that last failed and runs again opens a fresh window by itself. attend adds the states timeout (still running past the budget), no_pipeline (10 minutes of waiting with no pipeline for sha; pushed says whether the MR head is at sha, remoteSha is that head), stood_down (another owner attends; carries holder), lease_unavailable (the lease could not be claimed or kept; carries error) and unsupported_forge (a GitHub PR), and never returns lease_lost. With underBoardLease and attend it still only reads the board doctor lease. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
@@ -2576,10 +3624,318 @@ GitLab only. Watch the MR's pipeline for the pushed commit sha until it settles 
     },
     "underBoardLease": {
       "type": "boolean"
+    },
+    "attend": {
+      "type": "boolean",
+      "description": "true: claim and keep this session's lease and persist the watch window for the MR."
+    },
+    "holder": {
+      "type": "string",
+      "enum": [
+        "watch-ci",
+        "doctor"
+      ],
+      "description": "The role a claim takes, watch-ci (default) or doctor; only with attend."
     }
   },
   "required": [
     "sha"
+  ],
+  "additionalProperties": false
+}
+```
+
+### ci_triage
+
+<!-- mcp-lint: allow -->
+GitLab only. Sort a pipeline's failed jobs, same-project child pipelines included, into REAL, INFRA or UNCLEAR by their log, and mark each blocking job yours, INHERITED (also failing on the target branch) or UNKNOWN. pipelineId defaults to the MR's head pipeline. Returns state triaged with pipeline, base, blocking, nonBlocking, crossProject, summary and next. Patterns and base settings come from ci.triage.*; config adds one-off real-patterns, infra-patterns and noisy-jobs, and sets base-depth, base-ref and skip-base. base names the comparison branch and noBase turns the comparison off. It reports; retrying is the caller's decision. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "iid": {
+      "type": "number",
+      "description": "The MR's iid; omit when mrUrl is given, which supplies it."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "The MR's https URL; supplies both the repo and iid."
+    },
+    "pipelineId": {
+      "type": "number",
+      "description": "The numeric part of a gitlab:pipeline:N id; default the MR's head pipeline."
+    },
+    "config": {
+      "type": "object",
+      "description": "Optional one-off override with the keys of a pack's ci-config.json."
+    },
+    "base": {
+      "type": "string",
+      "description": "The branch whose recent failures mark a job INHERITED."
+    },
+    "noBase": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+### evidence_record
+
+<!-- mcp-lint: allow -->
+Merge images, case labels or waivers, removals, a transcript or a ticket url into the run's evidence field, and write it in one call. Each image's path and annotated file is copied, with its bundle (board, spec, captures, redaction record and crops), into ~/.mattstack/work/<run id>/evidence/<case>/, and the record stores the copied paths; a transcript is copied to the evidence folder itself. A file already there is never rewritten: a bundle that would change one lands whole in a content folder beside it (<case>/<12 hex>/, names unchanged), so a capture the record names keeps its bytes until the record moves. A source must sit under the target repo's checkout or worktrees (pass tree, the run's own worktree root, to name the repo; a tree in another repo is refused), the Claude Code temp root, ~/.mattstack/evidence, rt.mcp.uploadRoots, a run's evidence folder or ~/.fast-browser/screenshots; anything else is refused before anything is copied. Writes only when every image is annotated with a caption or waived (its own waiver or its case's); otherwise returns uncovered and writes nothing, so call again with each listed image's cover. plan: "none" writes {"plan":"none"} and takes nothing else. Returns {written, encoding, value, uncovered, copied}.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage writing the field (run_field_set's stage)."
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case": {
+            "type": "string",
+            "description": "Case id: lowercase letters, digits and dashes."
+          },
+          "label": {
+            "type": "string",
+            "description": "Names a new case."
+          },
+          "slot": {
+            "type": "string",
+            "enum": [
+              "before",
+              "after"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark"
+            ],
+            "description": "Only when the slot is a {light, dark} pair."
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path of the capture; a new path recaptures the slot."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ticket"
+            ],
+            "description": "ticket marks a saved ticket image: it is never waived and its own path never uploads, only its board. rt records the copied file's size and sha256 beside it (never pass them), so a copy is refused even after the file is deleted. Kept on later calls for the same path; a new path clears it."
+          },
+          "annotated": {
+            "type": "string",
+            "description": "Absolute path of the annotated board; needs caption."
+          },
+          "caption": {
+            "type": "string"
+          },
+          "waiver": {
+            "type": "string",
+            "description": "Why this image has no annotated board."
+          }
+        },
+        "required": [
+          "case",
+          "slot"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Case id: lowercase letters, digits and dashes."
+          },
+          "label": {
+            "type": "string"
+          },
+          "waiver": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "remove": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case": {
+            "type": "string",
+            "description": "Case id: lowercase letters, digits and dashes."
+          },
+          "slot": {
+            "type": "string",
+            "enum": [
+              "before",
+              "after"
+            ]
+          },
+          "theme": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark"
+            ],
+            "description": "Only when the slot is a {light, dark} pair."
+          }
+        },
+        "required": [
+          "case"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "transcript": {
+      "type": "string",
+      "description": "Absolute path of a text transcript (md, txt or log)."
+    },
+    "url": {
+      "type": "string",
+      "description": "The ticket url."
+    },
+    "plan": {
+      "type": "string",
+      "enum": [
+        "none"
+      ]
+    },
+    "tree": {
+      "type": "string",
+      "description": "The run's worktree root; its repo's checkout and worktrees count as copy sources."
+    }
+  },
+  "required": [
+    "runDb",
+    "stage"
+  ],
+  "additionalProperties": false
+}
+```
+
+### evidence_attach
+
+<!-- mcp-lint: allow -->
+Call only after the attach gate's proceed. Uploads each file the run's evidence record allows (each distinct annotated board and each waived capture, once) through mr_upload's guard with the run's id, reusing an earlier upload whose bytes and project match; renders the evidence section; and replaces the section under heading in the MR description (inserted above before, or appended). A refused or twice-timed-out file blocks the description write unless linkRefused is true, which names it as "<file name> (attached separately)" instead, never its path; a file an earlier call linked that way is sent again: refused again, it stays linked, is listed in linked and does not block; timed out twice, it lands in timedOutTwice like any other file. The target is mrUrl, or repoName with iid, else the run's mr field (an iid passed alone must match that field's, or the call is refused); with repoName and no iid there is no MR yet, so the section (and description, spliced, when passed) comes back unwritten. On GitHub nothing uploads and nothing is written: the section names each file as attached separately and next names the gh move. A section that names a path in your home directory (a caption, label, waiver, ticket or appendix carrying one) is never written, nor next given, and writeErrors says so. Returns {forge, mr, uploaded, refused (by bucket), timedOutTwice, linked, section, description?, descriptionWritten, notWritten?, writeErrors?}. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "runDb": {
+      "type": "string",
+      "description": "The runDb run_start returned."
+    },
+    "stage": {
+      "type": "string",
+      "description": "The stage writing the field (run_field_set's stage)."
+    },
+    "heading": {
+      "type": "string",
+      "description": "The section's full heading line, e.g. ## Verification Evidence."
+    },
+    "before": {
+      "type": "string",
+      "description": "A heading line the section is inserted above when heading is absent."
+    },
+    "appendix": {
+      "type": "string",
+      "description": "Markdown printed inside the section after the generated content. A heading at or above heading's level, or a code fence left open, is refused."
+    },
+    "repoName": {
+      "type": "string",
+      "description": "Serialized identity, absolute checkout or worktree path, or a label matching exactly one registered repo."
+    },
+    "iid": {
+      "type": "number",
+      "description": "The MR's iid; omit when mrUrl is given, which supplies it."
+    },
+    "mrUrl": {
+      "type": "string",
+      "description": "The MR's https URL; supplies both the repo and iid."
+    },
+    "description": {
+      "type": "string",
+      "description": "A description to splice the section into when there is no MR to write, or on GitHub."
+    },
+    "linkRefused": {
+      "type": "boolean",
+      "description": "The off-script gate's Take: name refused files as attached separately (no path) and write anyway."
+    }
+  },
+  "required": [
+    "runDb",
+    "stage",
+    "heading"
+  ],
+  "additionalProperties": false
+}
+```
+
+### dev_endpoints
+
+<!-- mcp-lint: allow -->
+Look up the dev-server endpoints rt claimed for a worktree and probe them until each answers. Pass tree (the worktree root) and roles (1 to 8 role names). For each role the daemon's claim is reported, and every claimed role gets an HTTP GET of its url plus probePath (default /) with no redirect follow; any HTTP response, a 404 or a 302 included, counts as answered, while a refused connection or a timeout does not. Probes repeat every 2 seconds until every claimed role answers or waitSeconds (default 90, at most 300, 0 probes once) passes. running is reported but is not a readiness signal; answered is. An undeclared role is reported on that role with error and does not fail the call; an unclaimed role is never waited on. Returns {tree, waitedMs, roles: {<role>: {claimed, port, url, running, listener, answered, status, answeredAfterMs, error?}}, waiting}, where waiting lists claimed roles that never answered.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "tree": {
+      "type": "string",
+      "description": "Absolute path of the worktree root."
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "description": "Endpoint role names, e.g. web, api."
+    },
+    "waitSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 300,
+      "description": "How long to keep probing; default 90, 0 probes once."
+    },
+    "probePath": {
+      "type": "string",
+      "description": "Path appended to each url; default /."
+    }
+  },
+  "required": [
+    "tree",
+    "roles"
   ],
   "additionalProperties": false
 }

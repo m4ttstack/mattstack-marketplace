@@ -36,6 +36,15 @@ the cache copy itself.
 | Marketplace | `name` in the org clone's `.claude-plugin/marketplace.json`, which need not match the pack name (directory source = the org clone itself)         | `mattstack` (the local dev marketplace `~/Documents/GitHub/mattstack-marketplace`, whose `mattstack` entry is a git-subdir source: a `file://` URL to the shared monorepo checkout, path `plugins/mattstack`, ref `main`; Claude Code refuses symlinked plugin paths since 2.1.257)                                                                                                            |
 | Update      | `claude plugin update <plugin>@<marketplace>` (derive both, see below)                                                                            | `claude plugin update mattstack@mattstack`                                                                                                                                                                                                                                                                                                                                                     |
 
+**Where a team pack edit goes.** In the org clone itself, at the Source
+row's path, on the branch the clone has checked out: every fill, skill,
+`pack/skills.jsonc`, `pack/stubs.jsonc` and `pack/surface.jsonc` edit, and
+its commit and push. Never in a git worktree or another copy of the org
+repo: materialize reads a pack's fragment only from the org clone, and sync
+publishes the checkout the marketplace names (the org clone) and refuses a
+`.worktrees/` or `.claude/worktrees/` folder under the pack. Only a
+mattstack change is made in a worktree (your own monorepo worktree).
+
 **Deriving `<plugin>@<marketplace>` for the update.** The two names are
 independent: `<plugin>` is the `name` in the pack's `plugin.json`;
 `<marketplace>` is the `name` in the org clone's
@@ -55,170 +64,166 @@ Walk this map for every change; the sections below it are how to do each box.
 digraph publish_skill {
     rankdir=TB;
 
-    "Trigger: a skill change to make, or a change that is not live" [shape=ellipse];
-    "Is there an edit to make?" [shape=diamond];
-    "Baseline a fresh agent (RED)" [shape=box];
-    "Edit or create SKILL.md in the source path" [shape=box];
-    "The edit compiles into a pack verb?" [shape=diamond];
-    "Compile the checkout's sources on Bash" [shape=box];
-    "Verify with a fresh agent (GREEN)" [shape=box];
-    "GREEN clean, with no shell call a tool covers?" [shape=diamond];
-    "Craft rounds = 3?" [shape=diamond];
-    "Revise the skill against the GREEN transcript" [shape=box];
-    "Gate: craft rounds spent" [shape=box];
-    "What changed?" [shape=diamond];
-    "Add its root to the manifest skills array" [shape=box];
-    "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>" [shape=plaintext];
-    "Certify passes?" [shape=diamond];
-    "Certify rounds = 3?" [shape=diamond];
-    "Fix what certify names" [shape=box];
-    "Gate: certify rounds spent" [shape=box];
-    "Bump version in the manifest" [shape=box];
-    "git add <files>; git commit" [shape=plaintext];
-    "On the default branch?" [shape=diamond];
-    "Push the default branch from the checkout" [shape=box];
-    "Push landed?" [shape=diamond];
-    "Gate: default-branch push rejected" [shape=box];
-    "git_push {tree: <checkout>, setUpstream: true}" [shape=plaintext];
-    "git_push result?" [shape=diamond];
-    "Retried with the printed root?" [shape=diamond];
-    "git_push {tree: <the root the error prints>, setUpstream: true}" [shape=plaintext];
-    "STOP: push feature branches only with git_push" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Off-script gate: feature push refused" [shape=box];
-    "List the packs to bring current" [shape=box];
-    "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}" [shape=plaintext];
-    "Check result?" [shape=diamond];
-    "Read what moved on Bash" [shape=box];
-    "rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}" [shape=plaintext];
-    "Sync result?" [shape=diamond];
-    "Sync warned about cswap sessions?" [shape=diamond];
-    "CLAUDE_CONFIG_DIR=<session dir> claude plugin update <plugin>@<marketplace>" [shape=plaintext];
-    "git status" [shape=plaintext];
-    "Pack tree?" [shape=diamond];
-    "Read each sync step's reason on Bash" [shape=box];
-    "Retried this pack once?" [shape=diamond];
-    "Fix the guard it names" [shape=box];
-    "claude plugin update <plugin>@<marketplace>" [shape=plaintext];
-    "rt_verb {args: [\"skills\", \"compile\", \"--pack\", \"<drifted pack>\"]}" [shape=plaintext];
-    "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<drifted pack>\"]}" [shape=plaintext];
-    "Drifted pack current?" [shape=diamond];
-    "Gate: drift survives the compile" [shape=box];
-    "git add <drifted pack files>; git commit" [shape=plaintext];
-    "Push the drifted pack's default branch" [shape=box];
-    "Drift push landed?" [shape=diamond];
-    "Gate: drift push rejected" [shape=box];
-    "claude plugin update <drifted pack>@<marketplace>" [shape=plaintext];
-    "Another listed pack not yet current?" [shape=diamond];
-    "Sync calls = listed packs + 2?" [shape=diamond];
-    "Gate: sync budget spent" [shape=box];
-    "ls <config>/plugins/cache/<marketplace>/<plugin>/" [shape=plaintext];
-    "Newest version matches the bump?" [shape=diamond];
-    "Gate: cached version still behind" [shape=box];
-    "Read the compiled output in full" [shape=box];
-    "In a herdr pane?" [shape=diamond];
-    "rt pane send self --text \"/reload-plugins\" --then \"Continue: ...\"" [shape=plaintext];
-    "End the turn; the reload runs in place" [shape=box];
-    "Ask the user to type /reload-plugins" [shape=box];
-    "Pushed: sync waits until the branch lands on main" [shape=doublecircle];
-    "Handed to the human" [shape=doublecircle];
-    "Change live in the cache" [shape=doublecircle style=filled fillcolor=lightgreen];
+    skill_change [label="Trigger: a skill change to make, or a change that is not live" shape=ellipse];
+    edit_to_make [label="Is there an edit to make?" shape=diamond];
+    baseline_red [label="Baseline a fresh agent (RED)" shape=box];
+    edit_skill_md [label="Edit or create SKILL.md in the source path" shape=box];
+    compiles_into_verb [label="The edit compiles into a pack verb?" shape=diamond];
+    compile_sources [label="Compile the checkout's sources on Bash" shape=box];
+    verify_green [label="Verify with a fresh agent (GREEN)" shape=box];
+    green_clean [label="GREEN clean, with no shell call a tool covers?" shape=diamond];
+    craft_rounds_spent [label="Craft rounds = 3?" shape=diamond];
+    revise_skill [label="Revise the skill against the GREEN transcript" shape=box];
+    gate_craft_rounds [label="Gate: craft rounds spent" shape=box];
+    what_changed [label="What changed?" shape=diamond];
+    add_root_manifest [label="Add its root to the manifest skills array" shape=box];
+    sh_certify [label="sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <the skill folder this change wrote or revised>" shape=plaintext];
+    certify_passes [label="Certify passes?" shape=diamond];
+    certify_rounds_spent [label="Certify rounds = 3?" shape=diamond];
+    fix_certify_findings [label="Fix what certify names" shape=box];
+    gate_certify_rounds [label="Gate: certify rounds spent" shape=box];
+    bump_version [label="Bump version in the manifest" shape=box];
+    git_add_commit [label="git add <files>; git commit" shape=plaintext];
+    team_pack_clone [label="Team pack (the org clone, on whatever branch it has checked out)?" shape=diamond];
+    push_org_clone_branch [label="Push the org clone's checked-out branch" shape=box];
+    push_landed [label="Push landed?" shape=diamond];
+    gate_team_pack_push_rejected [label="Gate: team pack push rejected" shape=box];
+    git_push_upstream [label="git_push {tree: <checkout>, setUpstream: true}" shape=plaintext];
+    git_push_result [label="git_push result?" shape=diamond];
+    stop_shell_push [label="STOP: push feature branches only with git_push" shape=octagon style=filled fillcolor=red fontcolor=white];
+    gate_feature_push_refused [label="Off-script gate: feature push refused" shape=box];
+    list_packs [label="List the packs to bring current" shape=box];
+    rt_verb_check_pack [label="rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}" shape=plaintext];
+    check_result [label="Check result?" shape=diamond];
+    read_what_moved [label="Read what moved on Bash" shape=box];
+    rt_verb_sync_pack [label="rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}" shape=plaintext];
+    sync_result [label="Sync result?" shape=diamond];
+    sync_warned_cswap [label="Sync warned about cswap sessions?" shape=diamond];
+    claude_update_session [label="CLAUDE_CONFIG_DIR=<session dir> claude plugin update <plugin>@<marketplace>" shape=plaintext];
+    git_status [label="git status" shape=plaintext];
+    pack_tree [label="Pack tree?" shape=diamond];
+    read_sync_reasons [label="Read each sync step's reason on Bash" shape=box];
+    pack_retried [label="Retried this pack once?" shape=diamond];
+    fix_named_guard [label="Fix the guard it names" shape=box];
+    claude_update_plugin [label="claude plugin update <plugin>@<marketplace>" shape=plaintext];
+    rt_verb_compile_drifted [label="rt_verb {args: [\"skills\", \"compile\", \"--pack\", \"<drifted pack>\"]}" shape=plaintext];
+    rt_verb_check_drifted [label="rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<drifted pack>\"]}" shape=plaintext];
+    drifted_pack_current [label="Drifted pack current?" shape=diamond];
+    gate_drift_survives [label="Gate: drift survives the compile" shape=box];
+    git_add_drifted [label="git add <drifted pack files>; git commit" shape=plaintext];
+    push_drifted_branch [label="Push the drifted pack's checked-out branch" shape=box];
+    drift_push_landed [label="Drift push landed?" shape=diamond];
+    gate_drift_push_rejected [label="Gate: drift push rejected" shape=box];
+    claude_update_drifted [label="claude plugin update <drifted pack>@<marketplace>" shape=plaintext];
+    another_pack_pending [label="Another listed pack not yet current?" shape=diamond];
+    sync_calls_spent [label="Sync calls = listed packs + 2?" shape=diamond];
+    gate_sync_budget [label="Gate: sync budget spent" shape=box];
+    ls_plugin_cache [label="ls <config>/plugins/cache/<marketplace>/<plugin>/" shape=plaintext];
+    version_matches_bump [label="Newest version matches the bump?" shape=diamond];
+    gate_cache_behind [label="Gate: cached version still behind" shape=box];
+    read_compiled_output [label="Read the compiled output in full" shape=box];
+    in_herdr_pane [label="In a herdr pane?" shape=diamond];
+    rt_pane_send_reload [label="rt pane send self --text \"/reload-plugins\" --then \"Continue: ...\"" shape=plaintext];
+    end_turn_reload [label="End the turn; the reload runs in place" shape=box];
+    ask_user_reload [label="Ask the user to type /reload-plugins" shape=box];
+    pushed_sync_waits [label="Pushed: sync waits until the branch lands on main" shape=doublecircle];
+    handed_to_human [label="Handed to the human" shape=doublecircle];
+    change_live [label="Change live in the cache" shape=doublecircle style=filled fillcolor=lightgreen];
 
-    "Trigger: a skill change to make, or a change that is not live" -> "Is there an edit to make?";
-    "Is there an edit to make?" -> "Baseline a fresh agent (RED)" [label="yes"];
-    "Is there an edit to make?" -> "List the packs to bring current" [label="no: not live, or the cache lags"];
-    "Is there an edit to make?" -> "What changed?" [label="made and GREEN in an extending-a-pack round"];
-    "Baseline a fresh agent (RED)" -> "Edit or create SKILL.md in the source path";
-    "Edit or create SKILL.md in the source path" -> "The edit compiles into a pack verb?";
-    "The edit compiles into a pack verb?" -> "Compile the checkout's sources on Bash" [label="yes: engine, include or fill"];
-    "The edit compiles into a pack verb?" -> "Verify with a fresh agent (GREEN)" [label="no: hand-authored"];
-    "Compile the checkout's sources on Bash" -> "Verify with a fresh agent (GREEN)";
-    "Verify with a fresh agent (GREEN)" -> "GREEN clean, with no shell call a tool covers?";
-    "GREEN clean, with no shell call a tool covers?" -> "What changed?" [label="yes"];
-    "GREEN clean, with no shell call a tool covers?" -> "Craft rounds = 3?" [label="no"];
-    "Craft rounds = 3?" -> "Revise the skill against the GREEN transcript" [label="no"];
-    "Craft rounds = 3?" -> "Gate: craft rounds spent" [label="yes"];
-    "Revise the skill against the GREEN transcript" -> "The edit compiles into a pack verb?";
-    "Gate: craft rounds spent" -> "Revise the skill against the GREEN transcript" [label="retry with their note"];
-    "Gate: craft rounds spent" -> "Handed to the human" [label="human takes over"];
-    "What changed?" -> "Add its root to the manifest skills array" [label="a new mattstack skill under a new root"];
-    "What changed?" -> "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>" [label="anything else"];
-    "Add its root to the manifest skills array" -> "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>";
-    "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>" -> "Certify passes?";
-    "Certify passes?" -> "Bump version in the manifest" [label="yes"];
-    "Certify passes?" -> "Certify rounds = 3?" [label="no"];
-    "Certify rounds = 3?" -> "Fix what certify names" [label="no"];
-    "Certify rounds = 3?" -> "Gate: certify rounds spent" [label="yes"];
-    "Fix what certify names" -> "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>";
-    "Gate: certify rounds spent" -> "sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir>" [label="retry: human fixed it"];
-    "Gate: certify rounds spent" -> "Handed to the human" [label="human takes over"];
-    "Bump version in the manifest" -> "git add <files>; git commit";
-    "git add <files>; git commit" -> "On the default branch?";
-    "On the default branch?" -> "Push the default branch from the checkout" [label="yes: a team pack"];
-    "On the default branch?" -> "git_push {tree: <checkout>, setUpstream: true}" [label="no: a feature branch, and every mattstack change"];
-    "Push the default branch from the checkout" -> "Push landed?";
-    "Push landed?" -> "List the packs to bring current" [label="yes"];
-    "Push landed?" -> "Gate: default-branch push rejected" [label="no: quote the rejection"];
-    "Gate: default-branch push rejected" -> "Push the default branch from the checkout" [label="retry: human fixed it"];
-    "Gate: default-branch push rejected" -> "Handed to the human" [label="human takes over"];
-    "git_push {tree: <checkout>, setUpstream: true}" -> "git_push result?";
-    "git_push {tree: <the root the error prints>, setUpstream: true}" -> "git_push result?";
-    "git_push result?" -> "Pushed: sync waits until the branch lands on main" [label="ok"];
-    "git_push result?" -> "Retried with the printed root?" [label="refused"];
-    "Retried with the printed root?" -> "git_push {tree: <the root the error prints>, setUpstream: true}" [label="no"];
-    "Retried with the printed root?" -> "STOP: push feature branches only with git_push" [label="yes"];
-    "STOP: push feature branches only with git_push" -> "Off-script gate: feature push refused";
-    "Off-script gate: feature push refused" -> "git_push {tree: <checkout>, setUpstream: true}" [label="retry: human fixed it"];
-    "Off-script gate: feature push refused" -> "Handed to the human" [label="human takes over"];
-    "List the packs to bring current" -> "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}";
-    "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}" -> "Check result?";
-    "Check result?" -> "Another listed pack not yet current?" [label="ok, installed current"];
-    "Check result?" -> "rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}" [label="ok, installed lagging"];
-    "Check result?" -> "Read what moved on Bash" [label="failed (exit 1): drift"];
-    "Read what moved on Bash" -> "rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}";
-    "rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}" -> "Sync result?";
-    "Sync result?" -> "Sync warned about cswap sessions?" [label="ok"];
-    "Sync result?" -> "git status" [label="failed (exit 1)"];
-    "Sync warned about cswap sessions?" -> "CLAUDE_CONFIG_DIR=<session dir> claude plugin update <plugin>@<marketplace>" [label="yes: once per named session"];
-    "Sync warned about cswap sessions?" -> "Another listed pack not yet current?" [label="no"];
-    "CLAUDE_CONFIG_DIR=<session dir> claude plugin update <plugin>@<marketplace>" -> "Another listed pack not yet current?";
-    "git status" -> "Pack tree?";
-    "Pack tree?" -> "rt_verb {args: [\"skills\", \"compile\", \"--pack\", \"<drifted pack>\"]}" [label="modified plugin.json plus compiled output: content drift"];
-    "Pack tree?" -> "Read each sync step's reason on Bash" [label="clean"];
-    "Read each sync step's reason on Bash" -> "Retried this pack once?";
-    "Retried this pack once?" -> "Fix the guard it names" [label="no"];
-    "Retried this pack once?" -> "claude plugin update <plugin>@<marketplace>" [label="yes: update by hand"];
-    "Fix the guard it names" -> "rt_verb {args: [\"skills\", \"sync\", \"--pack\", \"<pack>\"]}";
-    "claude plugin update <plugin>@<marketplace>" -> "Another listed pack not yet current?";
-    "rt_verb {args: [\"skills\", \"compile\", \"--pack\", \"<drifted pack>\"]}" -> "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<drifted pack>\"]}";
-    "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<drifted pack>\"]}" -> "Drifted pack current?";
-    "Drifted pack current?" -> "git add <drifted pack files>; git commit" [label="yes"];
-    "Drifted pack current?" -> "Gate: drift survives the compile" [label="no"];
-    "Gate: drift survives the compile" -> "rt_verb {args: [\"skills\", \"compile\", \"--pack\", \"<drifted pack>\"]}" [label="retry: human fixed it"];
-    "Gate: drift survives the compile" -> "Handed to the human" [label="human takes over"];
-    "git add <drifted pack files>; git commit" -> "Push the drifted pack's default branch";
-    "Push the drifted pack's default branch" -> "Drift push landed?";
-    "Drift push landed?" -> "claude plugin update <drifted pack>@<marketplace>" [label="yes"];
-    "Drift push landed?" -> "Gate: drift push rejected" [label="no: quote the rejection"];
-    "Gate: drift push rejected" -> "Push the drifted pack's default branch" [label="retry: human fixed it"];
-    "Gate: drift push rejected" -> "Handed to the human" [label="human takes over"];
-    "claude plugin update <drifted pack>@<marketplace>" -> "Another listed pack not yet current?";
-    "Another listed pack not yet current?" -> "Sync calls = listed packs + 2?" [label="yes"];
-    "Another listed pack not yet current?" -> "ls <config>/plugins/cache/<marketplace>/<plugin>/" [label="no"];
-    "Sync calls = listed packs + 2?" -> "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}" [label="no: the next pack"];
-    "Sync calls = listed packs + 2?" -> "Gate: sync budget spent" [label="yes"];
-    "Gate: sync budget spent" -> "rt_verb {args: [\"skills\", \"check\", \"--pack\", \"<pack>\"]}" [label="retry: human fixed it"];
-    "Gate: sync budget spent" -> "Handed to the human" [label="human takes over"];
-    "ls <config>/plugins/cache/<marketplace>/<plugin>/" -> "Newest version matches the bump?";
-    "Newest version matches the bump?" -> "Read the compiled output in full" [label="yes"];
-    "Newest version matches the bump?" -> "Gate: cached version still behind" [label="no"];
-    "Gate: cached version still behind" -> "List the packs to bring current" [label="retry: bring the packs current again"];
-    "Gate: cached version still behind" -> "Handed to the human" [label="human takes over"];
-    "Read the compiled output in full" -> "In a herdr pane?";
-    "In a herdr pane?" -> "rt pane send self --text \"/reload-plugins\" --then \"Continue: ...\"" [label="yes"];
-    "In a herdr pane?" -> "Ask the user to type /reload-plugins" [label="no"];
-    "rt pane send self --text \"/reload-plugins\" --then \"Continue: ...\"" -> "End the turn; the reload runs in place";
-    "End the turn; the reload runs in place" -> "Change live in the cache";
-    "Ask the user to type /reload-plugins" -> "Change live in the cache";
+    skill_change -> edit_to_make;
+    edit_to_make -> baseline_red [label="yes"];
+    edit_to_make -> list_packs [label="no: not live, or the cache lags"];
+    edit_to_make -> what_changed [label="handed from an extending-a-pack round"];
+    baseline_red -> edit_skill_md;
+    edit_skill_md -> compiles_into_verb;
+    compiles_into_verb -> compile_sources [label="yes: engine, include or fill"];
+    compiles_into_verb -> verify_green [label="no: hand-authored"];
+    compile_sources -> verify_green;
+    verify_green -> green_clean;
+    green_clean -> what_changed [label="yes"];
+    green_clean -> craft_rounds_spent [label="no"];
+    craft_rounds_spent -> revise_skill [label="no"];
+    craft_rounds_spent -> gate_craft_rounds [label="yes"];
+    revise_skill -> compiles_into_verb;
+    gate_craft_rounds -> revise_skill [label="retry with their note"];
+    gate_craft_rounds -> handed_to_human [label="human takes over"];
+    what_changed -> add_root_manifest [label="a new mattstack skill under a new root"];
+    what_changed -> bump_version [label="no skill folder written: a bind, an unset, a roster edit or a pack/skills.jsonc edit"];
+    what_changed -> sh_certify [label="a skill folder written or revised"];
+    add_root_manifest -> sh_certify;
+    sh_certify -> certify_passes;
+    certify_passes -> bump_version [label="yes"];
+    certify_passes -> certify_rounds_spent [label="no"];
+    certify_rounds_spent -> fix_certify_findings [label="no"];
+    certify_rounds_spent -> gate_certify_rounds [label="yes"];
+    fix_certify_findings -> sh_certify;
+    gate_certify_rounds -> sh_certify [label="retry: human fixed it"];
+    gate_certify_rounds -> handed_to_human [label="human takes over"];
+    bump_version -> git_add_commit;
+    git_add_commit -> team_pack_clone;
+    team_pack_clone -> push_org_clone_branch [label="yes: a team pack"];
+    team_pack_clone -> git_push_upstream [label="no: every mattstack change"];
+    push_org_clone_branch -> push_landed;
+    push_landed -> list_packs [label="yes"];
+    push_landed -> gate_team_pack_push_rejected [label="no: quote the rejection"];
+    gate_team_pack_push_rejected -> push_org_clone_branch [label="retry: human fixed it"];
+    gate_team_pack_push_rejected -> handed_to_human [label="human takes over"];
+    git_push_upstream -> git_push_result;
+    git_push_result -> pushed_sync_waits [label="ok"];
+    git_push_result -> stop_shell_push [label="refused"];
+    stop_shell_push -> gate_feature_push_refused;
+    gate_feature_push_refused -> git_push_upstream [label="retry: human fixed it"];
+    gate_feature_push_refused -> handed_to_human [label="human takes over"];
+    list_packs -> rt_verb_check_pack;
+    rt_verb_check_pack -> check_result;
+    check_result -> another_pack_pending [label="ok, installed current"];
+    check_result -> rt_verb_sync_pack [label="ok, installed lagging"];
+    check_result -> read_what_moved [label="failed (exit 1): drift"];
+    read_what_moved -> rt_verb_sync_pack;
+    rt_verb_sync_pack -> sync_result;
+    sync_result -> sync_warned_cswap [label="ok"];
+    sync_result -> git_status [label="failed (exit 1)"];
+    sync_warned_cswap -> claude_update_session [label="yes: once per named session"];
+    sync_warned_cswap -> another_pack_pending [label="no"];
+    claude_update_session -> another_pack_pending;
+    git_status -> pack_tree;
+    pack_tree -> rt_verb_compile_drifted [label="modified plugin.json plus compiled output: content drift"];
+    pack_tree -> read_sync_reasons [label="clean"];
+    read_sync_reasons -> pack_retried;
+    pack_retried -> fix_named_guard [label="no"];
+    pack_retried -> claude_update_plugin [label="yes: update by hand"];
+    fix_named_guard -> rt_verb_sync_pack;
+    claude_update_plugin -> another_pack_pending;
+    rt_verb_compile_drifted -> rt_verb_check_drifted;
+    rt_verb_check_drifted -> drifted_pack_current;
+    drifted_pack_current -> git_add_drifted [label="yes"];
+    drifted_pack_current -> gate_drift_survives [label="no"];
+    gate_drift_survives -> rt_verb_compile_drifted [label="retry: human fixed it"];
+    gate_drift_survives -> handed_to_human [label="human takes over"];
+    git_add_drifted -> push_drifted_branch;
+    push_drifted_branch -> drift_push_landed;
+    drift_push_landed -> claude_update_drifted [label="yes"];
+    drift_push_landed -> gate_drift_push_rejected [label="no: quote the rejection"];
+    gate_drift_push_rejected -> push_drifted_branch [label="retry: human fixed it"];
+    gate_drift_push_rejected -> handed_to_human [label="human takes over"];
+    claude_update_drifted -> another_pack_pending;
+    another_pack_pending -> sync_calls_spent [label="yes"];
+    another_pack_pending -> ls_plugin_cache [label="no"];
+    sync_calls_spent -> rt_verb_check_pack [label="no: the next pack"];
+    sync_calls_spent -> gate_sync_budget [label="yes"];
+    gate_sync_budget -> rt_verb_check_pack [label="retry: human fixed it"];
+    gate_sync_budget -> handed_to_human [label="human takes over"];
+    ls_plugin_cache -> version_matches_bump;
+    version_matches_bump -> read_compiled_output [label="yes"];
+    version_matches_bump -> gate_cache_behind [label="no"];
+    gate_cache_behind -> list_packs [label="retry: bring the packs current again"];
+    gate_cache_behind -> handed_to_human [label="human takes over"];
+    read_compiled_output -> in_herdr_pane;
+    in_herdr_pane -> rt_pane_send_reload [label="yes"];
+    in_herdr_pane -> ask_user_reload [label="no"];
+    rt_pane_send_reload -> end_turn_reload;
+    end_turn_reload -> change_live;
+    ask_user_reload -> change_live;
 }
 ```
 
@@ -228,7 +233,9 @@ Follow superpowers:writing-skills (TDD for docs: baseline a fresh agent
 before writing, verify after). For a process skill (a trigger, steps, an
 end) also follow mattstack:process-digraphs: the skill carries a digraph map
 with one section per judgment step, and certify renders and structure-checks
-it. For parameterized wrapper skills also read
+it. A mattstack plugin skill's graph uses short ids, which certify requires;
+a team pack's may use either form (mattstack:process-digraphs, Node
+vocabulary). For parameterized wrapper skills also read
 `${CLAUDE_SKILL_DIR}/../../../attachments/parameterized-skills/SKILL.md`.
 
 ### Edit or create SKILL.md in the source path
@@ -237,12 +244,19 @@ The source path for each estate is in the table above. Compiled output
 (`<pack>/skills/<verb>/` and the compiled internal verbs and stages under
 `<pack>/attachments/`, each carrying `compiled:` metadata) and cache copies
 are never edited: the next compile or update overwrites them. Edit the
-engine, include or fill instead.
+engine, include or fill instead. A stage copy
+(`<pack>/attachments/<stage>--<pipeline>/`, such as
+`stage-evidence--accessibility`) is compiled output too: compile writes it
+for a pipeline whose fills differ from the default and removes it when they
+match again. Change one through its fill or a
+`rt_verb {args: ["skills", "bind", "<stage>", "<slot>", "<pack>:<fill>", "--pipeline", "<name>", "--pack", "<pack>"]}`,
+naming the stage, never the copy.
 
 ### Compile the checkout's sources on Bash
 
-`rt_verb` refuses `--pack-dir` on compile, so compiling a checkout's or
-worktree's sources is the bare Bash command, run before GREEN. A team pack
+`rt_verb` refuses `--pack-dir` on compile, so compiling the mattstack
+plugin's sources in your monorepo worktree is the bare Bash command, run
+before GREEN. A team pack
 compile reads mattstack engines, includes and fills from the INSTALLED
 mattstack cache (table below), so compile the pack that reads your edit.
 A mattstack engine, include or fill compiles as mattstack against
@@ -252,13 +266,10 @@ after the mattstack cache updates:
 
 `rt skills compile --pack mattstack --pack-dir <your monorepo worktree>/plugins/mattstack` <!-- mcp-lint: allow -->
 
-A team pack's own fill compiles as that pack against its checkout:
-
-`rt skills compile --pack <pack> --pack-dir <pack checkout>` <!-- mcp-lint: allow -->
-
-For a team pack's canonical checkout,
-`rt_verb {args: ["skills", "compile", "--pack", "<pack>"]}` is enough; the
-bare `--pack-dir` form is for a worktree or another checkout. Never use the
+A team pack's own fill compiles in the org clone, which `--pack` resolves
+(unless your cwd is inside another copy of that pack, which then wins), so
+it takes no `--pack-dir`:
+`rt_verb {args: ["skills", "compile", "--pack", "<pack>"]}`. Never use the
 `--pack` form alone for mattstack: it resolves mattstack to the shared
 monorepo checkout.
 
@@ -290,6 +301,16 @@ under `attachments/<category>/<name>/` and is never listed there: it reaches
 a session only when a pack compiles it in -- the mattstack pack's own
 roster included.
 
+### What changed?
+
+Certify takes one skill folder, the one this change wrote or revised:
+`plugin/skills/<name>/` or `attachments/<category>/<name>/` for mattstack,
+`skills/<name>/` or `attachments/<fill>/` for a team pack. It never takes a
+pack folder or compiled output. A change that wrote no skill folder (a
+bind, an `--unset`, a pack/stubs.jsonc or pack/skills.jsonc edit) has
+nothing to certify and goes straight to the bump. When a change wrote
+several folders, certify each.
+
 ### Fix what certify names
 
 Certify prints one `FAIL` line per problem. Fix the line it names in the
@@ -316,10 +337,11 @@ from the app, leave the floor and, if the `Engine floor` check in the
 changes), add a line `engine-floor: unchanged <reason>` to the PR body.
 Edit the PR body, then push a commit: re-running the job reads the old body.
 
-### Push the default branch from the checkout
+### Push the org clone's checked-out branch
 
-From the checkout directory, a bare push (`git_push` refuses a default
-branch):
+From the org clone, on the branch it has checked out, a bare push. A team
+pack always takes it: `git_push` refuses main, master and origin's default
+branch, and on some orgs that is the branch the clone has checked out.
 
 `git push` <!-- mcp-lint: allow -->
 
@@ -376,11 +398,14 @@ step's reason:
 
 ### Fix the guard it names
 
-Sync refuses before anything mutates unless both checkouts are clean and on
-`main`, there is no `.worktrees/` or `.claude/worktrees/` under the pack,
-`claude` resolves to a binary, and each has a marketplace. Fix the one it
-names. Run sync against the canonical checkouts: from a feature worktree or
-an unmerged branch it refuses by design, so land the work on `main` first.
+Sync refuses before anything mutates unless both checkouts are clean, the
+engine checkout is on `main`, the pack checkout is on `main` or is the org
+clone (which may sit on whatever branch it has checked out), there is no
+`.worktrees/` or `.claude/worktrees/` under the pack, `claude` resolves to
+a binary, and each has a marketplace. Fix the one it names. Sync always
+acts on the checkout the marketplace names, never a worktree: a worktrees
+refusal means one was made under the pack, so carry its edits into the org
+clone (see Where a team pack edit goes) and remove the folder.
 An in-tree plugin (`plugins/mattstack` in the shared monorepo checkout)
 skips these git checks: sync reads its version from that checkout's `main`
 and only warns when the checkout sits on another branch.
@@ -391,9 +416,10 @@ first.`): update the app, never lower the floor. A pack whose own floor is
 above this app is not a refusal: sync reports it held (`skipped`, with the
 update-the-app copy) and leaves its installed copy alone.
 
-### Push the drifted pack's default branch
+### Push the drifted pack's checked-out branch
 
-In the drifted pack's checkout, the same bare push:
+In the drifted pack's org clone, on the branch it has checked out, the
+same bare push:
 
 `git push` <!-- mcp-lint: allow -->
 
@@ -438,7 +464,7 @@ Quote the `FAIL` lines from the last certify run and propose the fix you
 would try next. Retry: the human fixed it; certify again, with `Certify
 rounds` starting again at zero. Takes over: the human finishes the change.
 
-### Gate: default-branch push rejected
+### Gate: team pack push rejected
 
 Quote the rejection and propose the next move (bring in the remote change,
 fix the credentials). Never force. Retry: the human fixed it; push again,
@@ -447,10 +473,9 @@ for the human to push.
 
 ### Off-script gate: feature push refused
 
-Quote both `git_push` refusals and propose the fix (the tree's
+Quote the `git_push` refusal and propose the fix (the tree's
 registration, the branch, the remote). Retry: the human fixed it;
-`git_push` again from the checkout, with the printed-root retry available
-again. Takes over: the human pushes.
+`git_push` again from the checkout. Takes over: the human pushes.
 
 ### Gate: drift survives the compile
 
@@ -491,14 +516,17 @@ starting again at zero. Takes over: the human chases the cache.
 - To try an uncommitted edit for one session without touching the cache:
   `claude --plugin-dir <monorepo checkout>/plugins/mattstack`, or
   `claude --plugin-dir <pack dir>` for a team pack.
-- A change handed from `mattstack:extending-a-pack` or
-  `mattstack:creating-a-pack` already passed its RED and GREEN, so it enters
-  at `What changed?`.
+- Every hand-off from `mattstack:extending-a-pack` or
+  `mattstack:creating-a-pack` enters at `What changed?` with no RED
+  baseline here. A round that wrote or revised a skill folder already passed
+  its RED and GREEN there, and certifies that folder. A round that wrote no
+  folder (a new pipeline, a door, a reworded verb, a bind of an existing
+  fill, an `--unset` undo) takes the `no skill folder written` edge.
 - Skills verbs go through `rt_verb`: `--pack <pack>` sits in `args`, and
   the call never carries a `cwd`. `--pack-dir <dir>` rides in `args` for
   `check` only.
 - A team pack's own skill certifies with `--domain`
-  (`sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <dir> --domain`): the purity greps skip, every
+  (`sh ${CLAUDE_PLUGIN_ROOT}/tests/certify.sh <the skill folder> --domain`): the purity greps skip, every
   structural check still runs.
 - The cswap sessions sync warns about are those whose `plugins` is not a
   symlink resolving to `<config>/plugins`.
@@ -521,8 +549,8 @@ in the pack working tree for you to carry forward. An in-tree plugin is
 never pulled, bumped, compiled or committed in the shared checkout: its
 version is read from `main`, and drift in it refuses so the fix lands as a
 monorepo pull request. A merged mattstack change reaches sync only once the
-shared monorepo checkout's `main` is current (see Push the default branch
-from the checkout). What sync never does is
+shared monorepo checkout's `main` is current (see Push the org clone's
+checked-out branch). What sync never does is
 author or bump the ENGINE, so everything up to the push stays yours in
 every case.
 
@@ -564,7 +592,7 @@ What `compile` and `check` read:
 | Source                                       | Read from                                                                                                                            |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | mattstack engines, includes, mattstack fills | the INSTALLED mattstack plugin cache                                                                                                 |
-| the pack's own fills                         | the pack checkout (`--pack-dir`)                                                                                                     |
+| the pack's own fills                         | the pack dir `--pack` resolves (the org clone)                                                                                       |
 | everything, for `--pack mattstack` itself    | the monorepo CHECKOUT's plugins/mattstack (engines, fills, and `pack/skills.jsonc`); the installed cache is never consulted                      |
 | mattstack version in every seam marker       | mattstack's `plugin.json` at compile time; `check` masks it, so a bump that changed no inlined engine, include, or fill is not drift |
 | the team pack's `pack/requires.json`         | written by compile from the installed mattstack's `pack/requires.json` (never hand-edited; `check` reports a stale one as drift). mattstack's own floor is hand-maintained |

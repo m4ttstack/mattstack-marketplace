@@ -16,15 +16,11 @@ slots:
 
 # Receive review (feedback on your own change)
 
-The review comments left on **your own** change: pull the open threads, judge
-each against the codebase, decide what to change, reply. Implementation and
-posting each wait for their gate's answer.
-
-Baseline agents already fetch threads, verify before implementing, clarify
-vague comments, and gate posting; this skill cross-references those rather
-than re-teaching them. It exists for the two things agents get wrong on their
-**own** change: adjudicating the comments in the context that wrote the code
-(author bias), and performative agreement leaking into the replies.
+The review comments left on **your own** change: pull the open threads,
+judge each against the codebase, decide what to change, reply. The skill
+exists for the two things agents get wrong on their **own** change:
+adjudicating the comments in the context that wrote the code (author
+bias), and performative agreement leaking into the replies.
 
 The graph below is the run: follow its edges. A move it does not show is a
 question for a gate, never a judgment call. Reads through the read tools
@@ -34,533 +30,622 @@ and `gitlab_get` are part of the step that needs them, not moves.
 digraph receive_review {
     rankdir=TB;
 
-    "Trigger: review feedback to answer on your own MR/PR" [shape=ellipse];
-    "A caller handed a runDb that run_snapshot shows running?" [shape=diamond];
-    "Inherit the caller's run: no run_start, no close" [shape=box];
-    "Launched by a surface (spawnedBy)?" [shape=diamond];
-    "run_list {repo}" [shape=plaintext];
-    "Running receive-review runs in this repo?" [shape=diamond];
-    "Gate clarify for receive-review: Resume / Start fresh / Hold" [shape=box];
-    "receive-review clarify answer?" [shape=diamond];
-    "run_start {flags, skillDir, spawnedBy?}" [shape=plaintext];
-    "run_start returned ok: true with a runDb?" [shape=diamond];
-    "STOP: rt predates the run tools; tell the user to update rt" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "run_stage {action: start, stage: receive-review}" [shape=plaintext];
-    "Resume the receive-review run from run_snapshot" [shape=box];
-    "run_stage {action: start, stage: receive-review} on resume" [shape=plaintext];
-    "run_field_set {key: hold, value: -, stage: receive-review}" [shape=plaintext];
-    "What does the receive-review snapshot record?" [shape=diamond];
-    "What did the caller hand receive-review?" [shape=diamond];
+    trigger_review_feedback [label="Trigger: review feedback to answer on your own MR/PR" shape=ellipse];
+    run_enter [label="run_enter {flags, skillDir, stage: receive-review, runDb?, resume?, spawnedBy?}" shape=plaintext];
+    run_enter_mode [label="receive-review run_enter mode?" shape=diamond];
+    gate_resume_choice [label="Gate clarify for receive-review: Resume / Start fresh / Hold" shape=box];
+    resume_answer [label="receive-review clarify answer?" shape=diamond];
+    run_enter_resume [label="run_enter {flags, skillDir, stage: receive-review, resume: <picked runId>}" shape=plaintext];
+    run_enter_fresh [label="run_enter {flags, skillDir, stage: receive-review, fresh: true, spawnedBy?}" shape=plaintext];
+    refused_carried_resume [label="The refused receive-review run_enter carried resume?" shape=diamond];
+    stop_no_run_without_enter [label="STOP: no receive-review run without run_enter; report why to the user" shape=octagon style=filled fillcolor=red fontcolor=white];
+    run_snapshot [label="run_snapshot {runDb: <resumed receive-review>}" shape=plaintext];
+    snapshot_records [label="What does the receive-review snapshot record?" shape=diamond];
+    run_field_get_respond_plan [label="run_field_get {runDb, key: extra.gate-source.respond-plan}" shape=plaintext];
+    caller_handed [label="What did the caller hand receive-review?" shape=diamond];
 
-    "Resolve the change and record its identity" [shape=box];
-    "Forge of the change?" [shape=diamond];
-    "MR url or iid in hand?" [shape=diamond];
-    "mr_for_branch {repoName: <root>, branches: [<branch>]}" [shape=plaintext];
-    "Open MR with this source branch?" [shape=diamond];
-    "Report that no open MR has this branch as its source" [shape=box];
-    "mr_threads {mrUrl}" [shape=plaintext];
-    "Read the PR's review threads with gh" [shape=box];
-    "Keep only unresolved human threads" [shape=box];
-    "Executing a caller-handed {plan}?" [shape=diamond];
-    "Any unresolved human threads?" [shape=diamond];
+    resolve_change [label="Resolve the change and record its identity" shape=box];
+    change_forge [label="Forge of the change?" shape=diamond];
+    mr_ref_in_hand [label="MR url or iid in hand?" shape=diamond];
+    mr_for_branch [label="mr_for_branch {repoName: <root>, branches: [<branch>]}" shape=plaintext];
+    open_mr_found [label="Open MR with this source branch?" shape=diamond];
+    report_no_mr [label="Report that no open MR has this branch as its source" shape=box];
+    run_has_mr [label="The run already records mr?" shape=diamond];
+    run_field_set_mr [label="run_field_set {runDb, key: mr, value: <MR or PR url>, stage}" shape=plaintext];
+    run_has_branch [label="The run already records branch?" shape=diamond];
+    run_field_set_branch [label="run_field_set {runDb, key: branch, value: <source branch>, stage}" shape=plaintext];
+    executing_handed_plan [label="Executing a caller-handed {plan}?" shape=diamond];
+    handed_threads_where [label="Where are the handed plan's threads?" shape=diamond];
+    mr_threads_handed [label="mr_threads {mrUrl} for the handed plan's threads" shape=plaintext];
+    read_handed_threads_gh [label="Read the handed plan's threads on GitHub with gh" shape=box];
+    keep_plan_threads [label="Keep exactly the threads the handed plan names" shape=box];
+    run_field_get_handed [label="run_field_get {runDb, key: extra.gate-source.respond-plan} for the handed plan" shape=plaintext];
+    run_stores_source [label="The run stores a respond-plan source for the handed plan?" shape=diamond];
+    run_field_get_pending [label="run_field_get {runDb, key: extra.gate-source.respond-plan} for the pending round" shape=plaintext];
+    pending_gate_id [label="The pending round's stored gate id?" shape=diamond];
+    gate_reconcile_pending [label="gate_reconcile {id: <the stored gate>, runDb, stage}" shape=plaintext];
+    pending_reconcile_status [label="Pending round's gate_reconcile status?" shape=diamond];
+    write_pending_source [label="Write the pending round's source for gate_open" shape=box];
+    thread_read_forge [label="Forge for the thread read?" shape=diamond];
+    mr_threads_unresolved [label="mr_threads {mrUrl, filter: \"unresolved-human\"}" shape=plaintext];
+    read_pr_threads_gh [label="Read the PR's review threads with gh" shape=box];
+    keep_unresolved_human [label="Keep only unresolved human threads (GitHub)" shape=box];
+    any_unresolved [label="Any unresolved human threads?" shape=diamond];
 
-    "Dispatch one fresh-context adjudicator over all the review threads" [shape=box];
-    "Draft the verdict table and one reply per thread" [shape=box];
-    "Build the open" [shape=box];
-    "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json" [shape=plaintext];
-    "respond-plan fit exit code?" [shape=diamond];
-    "respond-plan fit attempts = 3?" [shape=diamond];
-    "Fix the respond-plan source the fit names" [shape=box];
-    "Off-script gate: the respond-plan open will not fit" [shape=box];
-    "Answer at the respond-plan fit off-script gate?" [shape=diamond];
-    "Make the recorded move once at the respond-plan fit" [shape=box];
-    "Caller owns the receive-review gates at respond-plan?" [shape=diamond];
-    "Hand back the verdict table and the respond-plan open's path" [shape=box];
-    "Gate respond-plan through gate-protocol" [shape=box];
-    "respond-plan pane next answer?" [shape=diamond];
-    "Redraft the replies with the respond-plan note" [shape=box];
-    "run_decision {contract: gate@1, scope: respond-plan, selection, decidedBy}" [shape=plaintext];
-    "Rewrite the receive-review report rows" [shape=box];
-    "code-changes answer?" [shape=diamond];
+    dispatch_adjudicator [label="Dispatch one fresh-context adjudicator over all the review threads" shape=box];
+    draft_verdict_table [label="Draft the verdict table and one reply per thread" shape=box];
+    build_plan_open [label="Build the open" shape=box];
+    caller_owns_plan_gates [label="Caller owns the receive-review gates at respond-plan?" shape=diamond];
+    gate_open_plan [label="gate_open {kind: respond-plan, sourcePath: <dir>/respond-plan.source.json, runDb, stage, scope: respond-plan}" shape=plaintext];
+    gate_open_plan_hand_back [label="gate_open {kind: respond-plan, sourcePath: <dir>/respond-plan.source.json, handBack: true, outPath: <dir>/respond-plan.open.json, runDb, stage, scope: respond-plan}" shape=plaintext];
+    plan_open_result [label="respond-plan gate_open result?" shape=diamond];
+    stop_fit_plan_open [label="STOP: fit the respond-plan open only with gate_open" shape=octagon style=filled fillcolor=red fontcolor=white];
+    run_budget_plan_open [label="run_budget {runDb, key: respond-plan-open, limit: 3, stage}" shape=plaintext];
+    plan_open_spent [label="respond-plan-open spent?" shape=diamond];
+    fix_plan_source [label="Fix the respond-plan source the gate_open refusal names" shape=box];
+    gate_off_script_plan_fit [label="Off-script gate: the respond-plan open will not fit" shape=box];
+    plan_fit_answer [label="respond-plan fit answer?" shape=diamond];
+    write_run_line_plan [label="Write the receive-review-run line into the handed --report" shape=box];
+    hand_back_verdict_table [label="Hand back the verdict table and the respond-plan open's path" shape=box];
+    gate_plan_carry [label="Gate respond-plan: carry the opened gate through gate-protocol" shape=box];
+    plan_next_answer [label="respond-plan pane next answer?" shape=diamond];
+    redraft_plan_replies [label="Redraft the replies with the respond-plan note" shape=box];
+    gate_record_plan [label="gate_record {runDb, stage, scope: respond-plan, shape: respond-plan, gateId | answers + decidedBy, contextDropped?}" shape=plaintext];
+    rewrite_report_rows [label="Rewrite the receive-review report rows" shape=box];
+    code_changes_answer [label="code-changes answer?" shape=diamond];
 
-    "Next report row, in verdict-table order?" [shape=diamond];
-    "Implement the thread's fix" [shape=box];
-    "Run the project's tests and checks on the fix" [shape=box];
-    "Fix checks pass?" [shape=diamond];
-    "Fix attempts on this thread = 3?" [shape=diamond];
-    "Off-script gate: the thread's fix did not converge" [shape=box];
-    "Answer at the unconverged-fix off-script gate?" [shape=diamond];
-    "Make the recorded move once for the unconverged fix" [shape=box];
-    "Commit the fix and finalize its Fixed reply" [shape=box];
-    "Redraft the override's reply" [shape=box];
+    next_report_row [label="Next report row, in verdict-table order?" shape=diamond];
+    implement_fix [label="Implement the thread's fix" shape=box];
+    run_checks [label="Run the project's tests and checks on the fix" shape=box];
+    checks_pass [label="Fix checks pass?" shape=diamond];
+    run_budget_fix [label="run_budget {runDb, key: fix:<threadId>, limit: 3, stage}" shape=plaintext];
+    fix_spent [label="fix:<threadId> spent?" shape=diamond];
+    gate_off_script_fix [label="Off-script gate: the thread's fix did not converge" shape=box];
+    unconverged_fix_answer [label="Unconverged fix answer?" shape=diamond];
+    make_unconverged_move [label="Make the recorded move once for the unconverged fix" shape=box];
+    commit_fix [label="Commit the fix and finalize its Fixed reply" shape=box];
+    redraft_override [label="Redraft the override's reply" shape=box];
 
-    "Resumed, or re-asking after respond-post Hold or Iterate?" [shape=diamond];
-    "Posted already: read each thread on the forge" [shape=box];
-    "Forge for the posted-already read?" [shape=diamond];
-    "mr_threads {mrUrl} for the posted-already read" [shape=plaintext];
-    "Read the PR's threads with gh for the posted-already test" [shape=box];
-    "Which threads does the posted-already read show carrying this run's reply?" [shape=diamond];
-    "Resuming a respond-post record that carries held?" [shape=diamond];
-    "Any thread offered (a finalized fix or an override)?" [shape=diamond];
-    "Nothing offered: caller handed a respond-post decision?" [shape=diamond];
-    "Threads offered: caller handed the respond-post answers?" [shape=diamond];
-    "Build the respond-post open" [shape=box];
-    "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json" [shape=plaintext];
-    "respond-post fit exit code?" [shape=diamond];
-    "respond-post fit attempts = 3?" [shape=diamond];
-    "Fix the respond-post source the fit names" [shape=box];
-    "Off-script gate: the respond-post open will not fit" [shape=box];
-    "Answer at the respond-post fit off-script gate?" [shape=diamond];
-    "Make the recorded move once at the respond-post fit" [shape=box];
-    "Caller owns the receive-review gates at respond-post?" [shape=diamond];
-    "Hand back the offered replies and the respond-post open's path" [shape=box];
-    "Gate respond-post through gate-protocol" [shape=box];
-    "respond-post next answer?" [shape=diamond];
-    "Decide nothing at respond-post: no push, post, resolve or record" [shape=box];
-    "Apply the respond-post note" [shape=box];
+    any_thread_offered [label="Any thread offered (a finalized fix or an override)?" shape=diamond];
+    build_post_open [label="Build the respond-post open" shape=box];
+    caller_owns_post_gates [label="Caller owns the receive-review gates at respond-post?" shape=diamond];
+    gate_open_post [label="gate_open {kind: respond-post, sourcePath: <dir>/respond-post.source.json, runDb, stage, scope: respond-post}" shape=plaintext];
+    gate_open_post_hand_back [label="gate_open {kind: respond-post, sourcePath: <dir>/respond-post.source.json, handBack: true, outPath: <dir>/respond-post.open.json, runDb, stage, scope: respond-post}" shape=plaintext];
+    post_open_result [label="respond-post gate_open result?" shape=diamond];
+    stop_fit_post_open [label="STOP: fit the respond-post open only with gate_open" shape=octagon style=filled fillcolor=red fontcolor=white];
+    run_budget_post_open [label="run_budget {runDb, key: respond-post-open, limit: 3, stage}" shape=plaintext];
+    post_open_spent [label="respond-post-open spent?" shape=diamond];
+    fix_post_source [label="Fix the respond-post source the gate_open refusal names" shape=box];
+    gate_off_script_post_fit [label="Off-script gate: the respond-post open will not fit" shape=box];
+    post_fit_answer [label="respond-post fit answer?" shape=diamond];
+    write_run_line_post [label="Write the run line before the respond-post hand-back" shape=box];
+    hand_back_offered [label="Hand back the offered replies and the respond-post open's path" shape=box];
+    gate_post_carry [label="Gate respond-post: carry the opened gate through gate-protocol" shape=box];
+    post_next_answer [label="respond-post next answer?" shape=diamond];
+    decide_nothing [label="Decide nothing at respond-post: no push, post, resolve or record" shape=box];
+    apply_post_note [label="Apply the respond-post note" shape=box];
+    gate_record_post [label="gate_record {runDb, stage, scope: respond-post, shape: respond-post, gateId | answers + decidedBy}" shape=plaintext];
 
-    "Picks post or resolve a gate-1: fix row?" [shape=diamond];
-    "git branch --show-current" [shape=plaintext];
-    "git rev-parse --abbrev-ref @{push}" [shape=plaintext];
-    "Both name the MR's source branch?" [shape=diamond];
-    "git_push {tree: <worktree root>}" [shape=plaintext];
-    "git_push result for the fix rows?" [shape=diamond];
-    "Retried git_push with the printed root?" [shape=diamond];
-    "git_push {tree: <the root the error prints>}" [shape=plaintext];
-    "STOP: a failed git_push holds the fix rows; never push from the shell, never force" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Hold the picked fix rows and report the failure verbatim" [shape=box];
-    "Hold the thread the forge refused and report the refusal verbatim" [shape=box];
+    post_forge [label="Forge for the post side?" shape=diamond];
+    respond_post_execute [label="respond_post_execute {runDb, tree, stage}" shape=plaintext];
+    execute_result [label="respond_post_execute result?" shape=diamond];
+    run_budget_execute_fix [label="run_budget {runDb, key: post-execute-fix, limit: 2, stage}" shape=plaintext];
+    execute_fix_spent [label="post-execute-fix spent?" shape=diamond];
+    fix_execute_refusal [label="Fix what the respond_post_execute refusal names" shape=box];
+    gate_off_script_execute [label="Off-script gate: respond_post_execute refused" shape=box];
+    execute_refusal_answer [label="respond_post_execute refusal answer?" shape=diamond];
+    stop_shell_push [label="STOP: respond_post_execute pushes the fix; never push from the shell, never force" shape=octagon style=filled fillcolor=red fontcolor=white];
+    stop_post_outside_execute [label="STOP: post replies only through respond_post_execute" shape=octagon style=filled fillcolor=red fontcolor=white];
+    gate_off_script_forge [label="Off-script gate: the forge refused a reply or resolve" shape=box];
+    forge_refusal_answer [label="Forge refusal answer?" shape=diamond];
+    report_held_threads [label="Report the held threads verbatim" shape=box];
+    run_field_set_hold_clear [label="run_field_set {runDb, key: hold, value: -, stage}" shape=plaintext];
 
-    "Next thread to act on: offered threads, then gate-1: reply rows?" [shape=diamond];
-    "post: decided for this thread?" [shape=diamond];
-    "Thread already carries this receive-review run's reply?" [shape=diamond];
-    "Forge for the reply?" [shape=diamond];
-    "mr_reply_thread {mrUrl, discussionId, body}" [shape=plaintext];
-    "mr_reply_thread result?" [shape=diamond];
-    "Retried this mr_reply_thread once?" [shape=diamond];
-    "STOP: a refused mr_reply_thread goes to its off-script gate, never the GitLab CLI" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Off-script gate: the forge refused the reply" [shape=box];
-    "Answer at the refused-reply off-script gate?" [shape=diamond];
-    "Make the recorded move once for the refused reply" [shape=box];
-    "Post the reply on GitHub with gh" [shape=box];
-    "resolve: decided for this thread?" [shape=diamond];
-    "Forge for the resolve?" [shape=diamond];
-    "mr_resolve_thread {mrUrl, discussionId}" [shape=plaintext];
-    "mr_resolve_thread result?" [shape=diamond];
-    "Retried this mr_resolve_thread once?" [shape=diamond];
-    "STOP: a refused mr_resolve_thread goes to its off-script gate, never the GitLab CLI" [shape=octagon style=filled fillcolor=red fontcolor=white];
-    "Off-script gate: the forge refused the resolve" [shape=box];
-    "Answer at the refused-resolve off-script gate?" [shape=diamond];
-    "Make the recorded move once for the refused resolve" [shape=box];
-    "Resolve the thread on GitHub with gh" [shape=box];
+    read_posted_threads_gh [label="Posted already on GitHub: read every thread with gh" shape=box];
+    gh_read_complete [label="The GitHub read returned every thread due?" shape=diamond];
+    picks_need_push [label="Picks post or resolve a gate-1: fix row?" shape=diamond];
+    git_branch_current [label="git branch --show-current" shape=plaintext];
+    git_rev_parse_push [label="git rev-parse --abbrev-ref @{push}" shape=plaintext];
+    branches_match_mr [label="Both name the MR's source branch?" shape=diamond];
+    git_push [label="git_push {tree: <worktree root>}" shape=plaintext];
+    push_result [label="git_push result for the fix rows?" shape=diamond];
+    stop_push_after_failed [label="STOP: a failed git_push holds the fix rows; never push from the shell, never force" shape=octagon style=filled fillcolor=red fontcolor=white];
+    hold_fix_rows [label="Hold the picked fix rows and report the failure verbatim" shape=box];
+    next_github_thread [label="Next GitHub thread?" shape=diamond];
+    post_reply [label="Post the reply on GitHub with gh" shape=box];
+    resolve_decided [label="resolve: decided for this thread?" shape=diamond];
+    resolve_thread [label="Resolve the thread on GitHub with gh" shape=box];
+    github_fix_held [label="Any GitHub fix row held this pass?" shape=diamond];
+    gate_record_held [label="gate_record {runDb, stage, scope: respond-post, shape: respond-post, gateId | answers + decidedBy, held}" shape=plaintext];
+    run_field_set_hold_held [label="run_field_set {runDb, key: hold, value: held, stage: <stage>}" shape=plaintext];
 
-    "respond-post decided by a gate or a handed post?" [shape=diamond];
-    "run_decision {contract: gate@1, scope: respond-post, selection, decidedBy}" [shape=plaintext];
-    "Any thread held this pass: a failed push or a forge refusal?" [shape=diamond];
-    "Report the outcome (to the caller when it owns the gates)" [shape=box];
-    "This verb started or resumed the run?" [shape=diamond];
-    "run_stage {action: done, stage: receive-review}" [shape=plaintext];
-    "run_status {status: done|abandoned}" [shape=plaintext];
-    "run_stage {action: fail, stage: <stage>, reason}" [shape=plaintext];
-    "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" [shape=plaintext];
-    "run_field_set {key: hold, value: <their words, or held>, stage: <stage>}" [shape=plaintext];
-    "run_field_set {key: hold, value: held, stage: <stage>}" [shape=plaintext];
+    report_outcome [label="Report the outcome" shape=box];
+    verb_owns_run [label="This verb started or resumed the run?" shape=diamond];
+    own_run_failed_or_abandoned [label="Failed or abandoned: is the run this verb's own?" shape=diamond];
+    run_close [label="run_close {runDb, workType: receive-review, stage: receive-review, outcome}" shape=plaintext];
+    closed_as [label="receive-review closed as?" shape=diamond];
+    run_stage_fail [label="run_stage {action: fail, stage: <stage>, reason}" shape=plaintext];
+    run_hold [label="run_hold {runDb, stage, reason, decidedBy}" shape=plaintext];
 
-    "No open MR: nothing to answer" [shape=doublecircle];
-    "Held: end the turn naming the run and stage" [shape=doublecircle];
-    "Threads held: run left open for a resume" [shape=doublecircle];
-    "receive-review stage failed" [shape=doublecircle];
-    "Review feedback answered" [shape=doublecircle style=filled fillcolor=lightgreen];
+    no_open_mr [label="No open MR: nothing to answer" shape=doublecircle];
+    held_end_turn [label="Held: end the turn naming the run and stage" shape=doublecircle];
+    threads_held_open [label="Threads held: run left open for a resume" shape=doublecircle];
+    stage_failed [label="receive-review stage failed" shape=doublecircle];
+    feedback_answered [label="Review feedback answered" shape=doublecircle style=filled fillcolor=lightgreen];
 
-    "Trigger: review feedback to answer on your own MR/PR" -> "A caller handed a runDb that run_snapshot shows running?";
-    "A caller handed a runDb that run_snapshot shows running?" -> "Inherit the caller's run: no run_start, no close" [label="yes"];
-    "A caller handed a runDb that run_snapshot shows running?" -> "Launched by a surface (spawnedBy)?" [label="no"];
-    "Inherit the caller's run: no run_start, no close" -> "What did the caller hand receive-review?";
-    "Launched by a surface (spawnedBy)?" -> "run_start {flags, skillDir, spawnedBy?}" [label="yes: start fresh"];
-    "Launched by a surface (spawnedBy)?" -> "run_list {repo}" [label="no: by hand"];
-    "run_list {repo}" -> "Running receive-review runs in this repo?";
-    "Running receive-review runs in this repo?" -> "run_start {flags, skillDir, spawnedBy?}" [label="none"];
-    "Running receive-review runs in this repo?" -> "Gate clarify for receive-review: Resume / Start fresh / Hold" [label="one or more"];
-    "Gate clarify for receive-review: Resume / Start fresh / Hold" -> "receive-review clarify answer?";
-    "receive-review clarify answer?" -> "Resume the receive-review run from run_snapshot" [label="resume"];
-    "receive-review clarify answer?" -> "run_start {flags, skillDir, spawnedBy?}" [label="start fresh"];
-    "receive-review clarify answer?" -> "Held: end the turn naming the run and stage" [label="hold"];
-    "run_start {flags, skillDir, spawnedBy?}" -> "run_start returned ok: true with a runDb?";
-    "run_start returned ok: true with a runDb?" -> "run_stage {action: start, stage: receive-review}" [label="yes: keep runDb"];
-    "run_start returned ok: true with a runDb?" -> "STOP: rt predates the run tools; tell the user to update rt" [label="no"];
-    "run_stage {action: start, stage: receive-review}" -> "What did the caller hand receive-review?";
-    "Resume the receive-review run from run_snapshot" -> "run_stage {action: start, stage: receive-review} on resume";
-    "run_stage {action: start, stage: receive-review} on resume" -> "run_field_set {key: hold, value: -, stage: receive-review}";
-    "run_field_set {key: hold, value: -, stage: receive-review}" -> "What does the receive-review snapshot record?";
-    "What does the receive-review snapshot record?" -> "Resolve the change and record its identity" [label="no respond-plan record"];
-    "What does the receive-review snapshot record?" -> "Rewrite the receive-review report rows" [label="respond-plan recorded, no respond-post record"];
-    "What does the receive-review snapshot record?" -> "Posted already: read each thread on the forge" [label="respond-post record carrying held"];
-    "What does the receive-review snapshot record?" -> "Report the outcome (to the caller when it owns the gates)" [label="respond-post recorded, nothing held"];
-    "What did the caller hand receive-review?" -> "Resolve the change and record its identity" [label="nothing, or a {plan} (alone or in {plan, post})"];
-    "What did the caller hand receive-review?" -> "Posted already: read each thread on the forge" [label="a {post} alone, with its report rows"];
+    trigger_review_feedback -> run_enter;
+    run_enter -> run_enter_mode;
+    run_enter_resume -> run_enter_mode;
+    run_enter_fresh -> run_enter_mode;
+    run_enter_mode -> caller_handed [label="started, or inherited: stage is at.stage"];
+    run_enter_mode -> run_snapshot [label="resumed"];
+    run_enter_mode -> gate_resume_choice [label="candidates"];
+    run_enter_mode -> refused_carried_resume [label="refused, or the tool is missing"];
+    refused_carried_resume -> run_enter_fresh [label="yes: say so, start fresh"];
+    refused_carried_resume -> stop_no_run_without_enter [label="no"];
+    gate_resume_choice -> resume_answer;
+    resume_answer -> run_enter_resume [label="resume"];
+    resume_answer -> run_enter_fresh [label="start fresh"];
+    resume_answer -> held_end_turn [label="hold: no run yet, record nothing"];
+    run_snapshot -> snapshot_records;
+    snapshot_records -> caller_handed [label="no respond-plan record"];
+    snapshot_records -> run_field_get_respond_plan [label="respond-plan recorded only, nothing handed, no source stored after a revise: never record it again"];
+    snapshot_records -> run_field_get_pending [label="respond-plan recorded as code-changes: revise, nothing handed, its source stored after the revise: the round is pending"];
+    snapshot_records -> caller_handed [label="respond-plan recorded as code-changes: revise, a {plan} handed: the newer plan"];
+    snapshot_records -> gate_record_post [label="respond-plan recorded only, a {post} handed"];
+    snapshot_records -> post_forge [label="respond-post recorded, held or not"];
+    run_field_get_respond_plan -> rewrite_report_rows [label="the stored cards, or an unset-key error"];
+    run_field_get_pending -> pending_gate_id;
+    pending_gate_id -> write_pending_source [label="null: a hand-back stored it"];
+    pending_gate_id -> gate_reconcile_pending [label="an id"];
+    gate_reconcile_pending -> pending_reconcile_status;
+    pending_reconcile_status -> gate_record_plan [label="answered: record it with gateId"];
+    pending_reconcile_status -> write_pending_source [label="open, closed or not found"];
+    write_pending_source -> caller_owns_plan_gates;
+    caller_handed -> resolve_change [label="nothing, or a {plan} (alone or in {plan, post})"];
+    caller_handed -> gate_record_post [label="a {post} alone"];
 
-    "Resolve the change and record its identity" -> "Forge of the change?";
-    "Forge of the change?" -> "MR url or iid in hand?" [label="GitLab"];
-    "Forge of the change?" -> "Read the PR's review threads with gh" [label="GitHub"];
-    "MR url or iid in hand?" -> "mr_threads {mrUrl}" [label="yes"];
-    "MR url or iid in hand?" -> "mr_for_branch {repoName: <root>, branches: [<branch>]}" [label="no"];
-    "mr_for_branch {repoName: <root>, branches: [<branch>]}" -> "Open MR with this source branch?";
-    "Open MR with this source branch?" -> "mr_threads {mrUrl}" [label="yes: its iid"];
-    "Open MR with this source branch?" -> "Report that no open MR has this branch as its source" [label="null entry"];
-    "Open MR with this source branch?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="an error: a failure, quoting its text (never read as none)"];
-    "Report that no open MR has this branch as its source" -> "No open MR: nothing to answer";
-    "mr_threads {mrUrl}" -> "Keep only unresolved human threads" [label="threads returned"];
-    "mr_threads {mrUrl}" -> "run_stage {action: fail, stage: <stage>, reason}" [label="an error: a failure, quoting its text (never read as none)"];
-    "Read the PR's review threads with gh" -> "Keep only unresolved human threads";
-    "Keep only unresolved human threads" -> "Executing a caller-handed {plan}?";
-    "Executing a caller-handed {plan}?" -> "run_decision {contract: gate@1, scope: respond-plan, selection, decidedBy}" [label="yes, not yet spent: record it, never re-adjudicate"];
-    "Executing a caller-handed {plan}?" -> "Any unresolved human threads?" [label="no, or the handed plan is spent by a revise"];
-    "Executing a caller-handed {plan}?" -> "Rewrite the receive-review report rows" [label="spent: run_snapshot already records it, not a revise: the rows from that record"];
-    "Any unresolved human threads?" -> "Dispatch one fresh-context adjudicator over all the review threads" [label="yes"];
-    "Any unresolved human threads?" -> "Report the outcome (to the caller when it owns the gates)" [label="none: say so"];
+    resolve_change -> change_forge;
+    change_forge -> mr_ref_in_hand [label="GitLab"];
+    change_forge -> run_has_mr [label="GitHub: the PR url"];
+    mr_ref_in_hand -> run_has_mr [label="yes"];
+    mr_ref_in_hand -> mr_for_branch [label="no"];
+    mr_for_branch -> open_mr_found;
+    open_mr_found -> run_has_mr [label="yes: its iid"];
+    open_mr_found -> report_no_mr [label="null entry"];
+    open_mr_found -> own_run_failed_or_abandoned [label="an error: fail, quoting it"];
+    report_no_mr -> no_open_mr;
+    run_has_mr -> run_field_set_mr [label="no"];
+    run_has_mr -> run_has_branch [label="yes: keep it"];
+    run_field_set_mr -> run_has_branch;
+    run_has_branch -> run_field_set_branch [label="no"];
+    run_has_branch -> executing_handed_plan [label="yes: keep it"];
+    run_field_set_branch -> executing_handed_plan;
+    executing_handed_plan -> handed_threads_where [label="yes, not yet spent: never re-adjudicate"];
+    executing_handed_plan -> thread_read_forge [label="no, or spent by a revise"];
+    executing_handed_plan -> run_field_get_respond_plan [label="spent: the run records it"];
+    handed_threads_where -> run_field_get_handed [label="in this conversation: read nothing"];
+    handed_threads_where -> mr_threads_handed [label="not in this conversation: GitLab"];
+    handed_threads_where -> read_handed_threads_gh [label="not in this conversation: GitHub"];
+    mr_threads_handed -> keep_plan_threads [label="threads, resolved ones included"];
+    mr_threads_handed -> own_run_failed_or_abandoned [label="an error: fail, quoting it"];
+    read_handed_threads_gh -> keep_plan_threads;
+    keep_plan_threads -> run_field_get_handed;
+    run_field_get_handed -> run_stores_source;
+    run_stores_source -> gate_record_plan [label="yes: record it"];
+    run_stores_source -> build_plan_open [label="no: build it from the handed --report"];
+    thread_read_forge -> mr_threads_unresolved [label="GitLab"];
+    thread_read_forge -> read_pr_threads_gh [label="GitHub"];
+    mr_threads_unresolved -> any_unresolved [label="threads: already filtered"];
+    mr_threads_unresolved -> own_run_failed_or_abandoned [label="an error: fail, quoting it"];
+    read_pr_threads_gh -> keep_unresolved_human;
+    keep_unresolved_human -> any_unresolved;
+    any_unresolved -> dispatch_adjudicator [label="yes"];
+    any_unresolved -> report_outcome [label="none: say so"];
 
-    "Dispatch one fresh-context adjudicator over all the review threads" -> "Draft the verdict table and one reply per thread";
-    "Draft the verdict table and one reply per thread" -> "Build the open";
-    "Build the open" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json";
-    "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json" -> "respond-plan fit exit code?";
-    "respond-plan fit exit code?" -> "Caller owns the receive-review gates at respond-plan?" [label="0"];
-    "respond-plan fit exit code?" -> "respond-plan fit attempts = 3?" [label="1: contract problems"];
-    "respond-plan fit attempts = 3?" -> "Fix the respond-plan source the fit names" [label="no"];
-    "respond-plan fit attempts = 3?" -> "Off-script gate: the respond-plan open will not fit" [label="yes"];
-    "Fix the respond-plan source the fit names" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json";
-    "Off-script gate: the respond-plan open will not fit" -> "Answer at the respond-plan fit off-script gate?";
-    "Answer at the respond-plan fit off-script gate?" -> "Make the recorded move once at the respond-plan fit" [label="take"];
-    "Answer at the respond-plan fit off-script gate?" -> "Fix the respond-plan source the fit names" [label="iterate: fix again with their note"];
-    "Answer at the respond-plan fit off-script gate?" -> "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" [label="hold"];
-    "Answer at the respond-plan fit off-script gate?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="hand back"];
-    "Make the recorded move once at the respond-plan fit" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json";
-    "Caller owns the receive-review gates at respond-plan?" -> "Hand back the verdict table and the respond-plan open's path" [label="yes"];
-    "Caller owns the receive-review gates at respond-plan?" -> "Gate respond-plan through gate-protocol" [label="no: a direct run"];
-    "Hand back the verdict table and the respond-plan open's path" -> "run_decision {contract: gate@1, scope: respond-plan, selection, decidedBy}" [label="caller hands {plan} back"];
-    "Gate respond-plan through gate-protocol" -> "respond-plan pane next answer?";
-    "respond-plan pane next answer?" -> "run_decision {contract: gate@1, scope: respond-plan, selection, decidedBy}" [label="continue, or answered off the pane"];
-    "respond-plan pane next answer?" -> "Redraft the replies with the respond-plan note" [label="iterate here"];
-    "respond-plan pane next answer?" -> "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" [label="hold"];
-    "Redraft the replies with the respond-plan note" -> "Build the open" [label="a new gate"];
-    "run_decision {contract: gate@1, scope: respond-plan, selection, decidedBy}" -> "Rewrite the receive-review report rows";
-    "Rewrite the receive-review report rows" -> "code-changes answer?";
-    "code-changes answer?" -> "Next report row, in verdict-table order?" [label="approve, or skip"];
-    "code-changes answer?" -> "Dispatch one fresh-context adjudicator over all the review threads" [label="revise: a fresh dispatch with their note; a handed plan is spent"];
+    dispatch_adjudicator -> draft_verdict_table;
+    draft_verdict_table -> build_plan_open;
+    build_plan_open -> caller_owns_plan_gates;
+    caller_owns_plan_gates -> gate_open_plan_hand_back [label="yes, no unspent plan handed: a board wrapper said so"];
+    caller_owns_plan_gates -> gate_open_plan [label="no: a direct run"];
+    caller_owns_plan_gates -> gate_open_plan_hand_back [label="an unspent handed plan: store its source"];
+    gate_open_plan -> plan_open_result;
+    gate_open_plan_hand_back -> plan_open_result;
+    plan_open_result -> gate_plan_carry [label="opened: the direct run"];
+    plan_open_result -> write_run_line_plan [label="handed back, no unspent plan"];
+    plan_open_result -> gate_record_plan [label="handed back, an unspent handed plan: record it"];
+    plan_open_result -> run_budget_plan_open [label="refused: a line names a source field"];
+    plan_open_result -> gate_off_script_plan_fit [label="refused: nothing a source fix can mend"];
+    plan_open_result -> stop_fit_plan_open [label="tempted to edit the open by hand, shorten a reply, or fit it with a script"];
+    stop_fit_plan_open -> gate_off_script_plan_fit;
+    run_budget_plan_open -> plan_open_spent;
+    plan_open_spent -> fix_plan_source [label="no"];
+    plan_open_spent -> gate_off_script_plan_fit [label="yes"];
+    fix_plan_source -> caller_owns_plan_gates;
+    gate_off_script_plan_fit -> plan_fit_answer;
+    plan_fit_answer -> fix_plan_source [label="take: the proposed change, once"];
+    plan_fit_answer -> fix_plan_source [label="iterate: fix again with their note"];
+    plan_fit_answer -> run_hold [label="hold"];
+    plan_fit_answer -> own_run_failed_or_abandoned [label="hand back"];
+    write_run_line_plan -> hand_back_verdict_table;
+    hand_back_verdict_table -> gate_record_plan [label="caller hands {plan} back: answers + decidedBy"];
+    gate_plan_carry -> plan_next_answer;
+    plan_next_answer -> gate_record_plan [label="continue, or answered off the pane: gateId"];
+    plan_next_answer -> redraft_plan_replies [label="iterate here: answer nothing, record nothing"];
+    plan_next_answer -> run_hold [label="hold: answer nothing, the gate stays open"];
+    redraft_plan_replies -> build_plan_open [label="a new gate"];
+    gate_record_plan -> rewrite_report_rows [label="its rows"];
+    rewrite_report_rows -> code_changes_answer;
+    code_changes_answer -> next_report_row [label="approve, or skip"];
+    code_changes_answer -> dispatch_adjudicator [label="revise: a fresh dispatch; a handed plan is spent"];
 
-    "Next report row, in verdict-table order?" -> "Implement the thread's fix" [label="fix, code-changes approve, not yet on the branch"];
-    "Next report row, in verdict-table order?" -> "Commit the fix and finalize its Fixed reply" [label="fix whose commit is on the branch (sha in its row, or the branch log): implement nothing again"];
-    "Next report row, in verdict-table order?" -> "Redraft the override's reply" [label="override"];
-    "Next report row, in verdict-table order?" -> "Next report row, in verdict-table order?" [label="reply, skip, or fix under code-changes skip: nothing now"];
-    "Next report row, in verdict-table order?" -> "Resumed, or re-asking after respond-post Hold or Iterate?" [label="rows done"];
-    "Implement the thread's fix" -> "Run the project's tests and checks on the fix";
-    "Run the project's tests and checks on the fix" -> "Fix checks pass?";
-    "Fix checks pass?" -> "Commit the fix and finalize its Fixed reply" [label="yes"];
-    "Fix checks pass?" -> "Fix attempts on this thread = 3?" [label="no"];
-    "Fix attempts on this thread = 3?" -> "Implement the thread's fix" [label="no: another attempt"];
-    "Fix attempts on this thread = 3?" -> "Off-script gate: the thread's fix did not converge" [label="yes"];
-    "Off-script gate: the thread's fix did not converge" -> "Answer at the unconverged-fix off-script gate?";
-    "Answer at the unconverged-fix off-script gate?" -> "Make the recorded move once for the unconverged fix" [label="take"];
-    "Answer at the unconverged-fix off-script gate?" -> "Implement the thread's fix" [label="iterate: try again with their note"];
-    "Answer at the unconverged-fix off-script gate?" -> "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" [label="hold"];
-    "Answer at the unconverged-fix off-script gate?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="hand back"];
-    "Make the recorded move once for the unconverged fix" -> "Next report row, in verdict-table order?";
-    "Commit the fix and finalize its Fixed reply" -> "Next report row, in verdict-table order?";
-    "Redraft the override's reply" -> "Next report row, in verdict-table order?";
+    next_report_row -> implement_fix [label="fix, code-changes approve, not yet on the branch"];
+    next_report_row -> commit_fix [label="fix already committed on the branch"];
+    next_report_row -> redraft_override [label="override"];
+    next_report_row -> next_report_row [label="reply, skip, or fix under code-changes skip"];
+    next_report_row -> any_thread_offered [label="rows done"];
+    implement_fix -> run_checks;
+    run_checks -> checks_pass;
+    checks_pass -> commit_fix [label="yes"];
+    checks_pass -> run_budget_fix [label="no: charge the failed attempt"];
+    run_budget_fix -> fix_spent;
+    fix_spent -> implement_fix [label="no: another attempt"];
+    fix_spent -> gate_off_script_fix [label="yes"];
+    gate_off_script_fix -> unconverged_fix_answer;
+    unconverged_fix_answer -> make_unconverged_move [label="take"];
+    unconverged_fix_answer -> implement_fix [label="iterate: try again with their note"];
+    unconverged_fix_answer -> run_hold [label="hold"];
+    unconverged_fix_answer -> own_run_failed_or_abandoned [label="hand back"];
+    make_unconverged_move -> next_report_row;
+    commit_fix -> next_report_row;
+    redraft_override -> next_report_row;
 
-    "Resumed, or re-asking after respond-post Hold or Iterate?" -> "Posted already: read each thread on the forge" [label="yes"];
-    "Resumed, or re-asking after respond-post Hold or Iterate?" -> "Any thread offered (a finalized fix or an override)?" [label="no"];
-    "Posted already: read each thread on the forge" -> "Forge for the posted-already read?";
-    "Forge for the posted-already read?" -> "mr_threads {mrUrl} for the posted-already read" [label="GitLab"];
-    "Forge for the posted-already read?" -> "Read the PR's threads with gh for the posted-already test" [label="GitHub"];
-    "mr_threads {mrUrl} for the posted-already read" -> "Which threads does the posted-already read show carrying this run's reply?";
-    "Read the PR's threads with gh for the posted-already test" -> "Which threads does the posted-already read show carrying this run's reply?";
-    "Which threads does the posted-already read show carrying this run's reply?" -> "Resuming a respond-post record that carries held?" [label="none: every thread due still posts or is offered"];
-    "Which threads does the posted-already read show carrying this run's reply?" -> "Resuming a respond-post record that carries held?" [label="some or all: count those posted, never post or offer them again"];
-    "Which threads does the posted-already read show carrying this run's reply?" -> "run_field_set {key: hold, value: held, stage: <stage>}" [label="no result, or an error: hold, the error verbatim"];
-    "Resuming a respond-post record that carries held?" -> "Picks post or resolve a gate-1: fix row?" [label="yes: act on the held threads only"];
-    "Resuming a respond-post record that carries held?" -> "Any thread offered (a finalized fix or an override)?" [label="no, or a held override has no recorded text: offer it again"];
-    "Any thread offered (a finalized fix or an override)?" -> "Nothing offered: caller handed a respond-post decision?" [label="no"];
-    "Any thread offered (a finalized fix or an override)?" -> "Threads offered: caller handed the respond-post answers?" [label="yes"];
-    "Nothing offered: caller handed a respond-post decision?" -> "Picks post or resolve a gate-1: fix row?" [label="yes: it decides first"];
-    "Nothing offered: caller handed a respond-post decision?" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="no: no gate, no record"];
-    "Threads offered: caller handed the respond-post answers?" -> "Picks post or resolve a gate-1: fix row?" [label="yes: ask nothing"];
-    "Threads offered: caller handed the respond-post answers?" -> "Build the respond-post open" [label="no"];
-    "Build the respond-post open" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json";
-    "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json" -> "respond-post fit exit code?";
-    "respond-post fit exit code?" -> "Caller owns the receive-review gates at respond-post?" [label="0"];
-    "respond-post fit exit code?" -> "respond-post fit attempts = 3?" [label="1: contract problems"];
-    "respond-post fit attempts = 3?" -> "Fix the respond-post source the fit names" [label="no"];
-    "respond-post fit attempts = 3?" -> "Off-script gate: the respond-post open will not fit" [label="yes"];
-    "Fix the respond-post source the fit names" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json";
-    "Off-script gate: the respond-post open will not fit" -> "Answer at the respond-post fit off-script gate?";
-    "Answer at the respond-post fit off-script gate?" -> "Make the recorded move once at the respond-post fit" [label="take"];
-    "Answer at the respond-post fit off-script gate?" -> "Fix the respond-post source the fit names" [label="iterate: fix again with their note"];
-    "Answer at the respond-post fit off-script gate?" -> "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" [label="hold"];
-    "Answer at the respond-post fit off-script gate?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="hand back"];
-    "Make the recorded move once at the respond-post fit" -> "sh ${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json";
-    "Caller owns the receive-review gates at respond-post?" -> "Hand back the offered replies and the respond-post open's path" [label="yes"];
-    "Caller owns the receive-review gates at respond-post?" -> "Gate respond-post through gate-protocol" [label="no: a direct run"];
-    "Hand back the offered replies and the respond-post open's path" -> "Picks post or resolve a gate-1: fix row?" [label="caller hands {post} back"];
-    "Gate respond-post through gate-protocol" -> "respond-post next answer?";
-    "respond-post next answer?" -> "Picks post or resolve a gate-1: fix row?" [label="proceed"];
-    "respond-post next answer?" -> "Decide nothing at respond-post: no push, post, resolve or record" [label="hold"];
-    "respond-post next answer?" -> "Apply the respond-post note" [label="iterate"];
-    "Decide nothing at respond-post: no push, post, resolve or record" -> "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}";
-    "Apply the respond-post note" -> "Posted already: read each thread on the forge" [label="a new gate"];
+    any_thread_offered -> post_forge [label="no: no respond-post gate, no record"];
+    any_thread_offered -> build_post_open [label="yes"];
+    build_post_open -> caller_owns_post_gates;
+    caller_owns_post_gates -> gate_open_post_hand_back [label="yes, no post handed yet: a board wrapper said so"];
+    caller_owns_post_gates -> gate_open_post [label="no: a direct run"];
+    caller_owns_post_gates -> gate_open_post_hand_back [label="post already handed: store its source"];
+    gate_open_post -> post_open_result;
+    gate_open_post_hand_back -> post_open_result;
+    post_open_result -> gate_post_carry [label="opened: the direct run"];
+    post_open_result -> write_run_line_post [label="handed back, no post handed yet"];
+    post_open_result -> gate_record_post [label="handed back, post already handed: record it"];
+    post_open_result -> run_budget_post_open [label="refused: a line names a source field"];
+    post_open_result -> gate_off_script_post_fit [label="refused: nothing a source fix can mend"];
+    post_open_result -> stop_fit_post_open [label="tempted to edit the open by hand, shorten a reply, or fit it with a script"];
+    stop_fit_post_open -> gate_off_script_post_fit;
+    run_budget_post_open -> post_open_spent;
+    post_open_spent -> fix_post_source [label="no"];
+    post_open_spent -> gate_off_script_post_fit [label="yes"];
+    fix_post_source -> caller_owns_post_gates;
+    gate_off_script_post_fit -> post_fit_answer;
+    post_fit_answer -> fix_post_source [label="take: the proposed change, once"];
+    post_fit_answer -> fix_post_source [label="iterate: fix again with their note"];
+    post_fit_answer -> run_hold [label="hold"];
+    post_fit_answer -> own_run_failed_or_abandoned [label="hand back"];
+    write_run_line_post -> hand_back_offered;
+    hand_back_offered -> gate_record_post [label="caller hands {post} back: answers + decidedBy"];
+    gate_post_carry -> post_next_answer;
+    post_next_answer -> gate_record_post [label="proceed, in the pane or off it: gateId"];
+    post_next_answer -> decide_nothing [label="hold: answer the gate (next: hold), record nothing"];
+    post_next_answer -> apply_post_note [label="iterate: answer the gate (next: iterate), record nothing"];
+    decide_nothing -> run_hold;
+    apply_post_note -> build_post_open [label="a new gate"];
+    gate_record_post -> post_forge;
 
-    "Picks post or resolve a gate-1: fix row?" -> "git branch --show-current" [label="yes"];
-    "Picks post or resolve a gate-1: fix row?" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="no: push nothing"];
-    "git branch --show-current" -> "git rev-parse --abbrev-ref @{push}";
-    "git rev-parse --abbrev-ref @{push}" -> "Both name the MR's source branch?";
-    "Both name the MR's source branch?" -> "git_push {tree: <worktree root>}" [label="yes"];
-    "Both name the MR's source branch?" -> "Hold the picked fix rows and report the failure verbatim" [label="no, or an error"];
-    "git_push {tree: <worktree root>}" -> "git_push result for the fix rows?";
-    "git_push {tree: <the root the error prints>}" -> "git_push result for the fix rows?";
-    "git_push result for the fix rows?" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="pushed"];
-    "git_push result for the fix rows?" -> "Retried git_push with the printed root?" [label="tree must be the absolute path of the root"];
-    "git_push result for the fix rows?" -> "Hold the picked fix rows and report the failure verbatim" [label="any other error"];
-    "git_push result for the fix rows?" -> "STOP: a failed git_push holds the fix rows; never push from the shell, never force" [label="tempted to push from the shell or force"];
-    "Retried git_push with the printed root?" -> "git_push {tree: <the root the error prints>}" [label="no"];
-    "Retried git_push with the printed root?" -> "Hold the picked fix rows and report the failure verbatim" [label="yes"];
-    "STOP: a failed git_push holds the fix rows; never push from the shell, never force" -> "Hold the picked fix rows and report the failure verbatim";
-    "Hold the picked fix rows and report the failure verbatim" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="every other reply still acts"];
-    "Hold the thread the forge refused and report the refusal verbatim" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="every other thread still acts"];
+    post_forge -> respond_post_execute [label="GitLab"];
+    post_forge -> read_posted_threads_gh [label="GitHub: never respond_post_execute or an mr_ tool"];
+    respond_post_execute -> execute_result;
+    execute_result -> run_field_set_hold_clear [label="held is empty"];
+    execute_result -> gate_off_script_forge [label="a reply or resolve held"];
+    execute_result -> report_held_threads [label="only push, mismatch or read held"];
+    execute_result -> run_budget_execute_fix [label="refused: a line names a field, a record or the tree"];
+    execute_result -> gate_off_script_execute [label="refused: nothing a fix on this run can mend"];
+    execute_result -> stop_shell_push [label="tempted to push from the shell or force"];
+    execute_result -> stop_post_outside_execute [label="tempted to reply or resolve by hand"];
+    stop_shell_push -> report_held_threads;
+    stop_post_outside_execute -> gate_off_script_forge;
+    run_budget_execute_fix -> execute_fix_spent;
+    execute_fix_spent -> fix_execute_refusal [label="no"];
+    execute_fix_spent -> gate_off_script_execute [label="yes"];
+    fix_execute_refusal -> respond_post_execute;
+    gate_off_script_execute -> execute_refusal_answer;
+    execute_refusal_answer -> fix_execute_refusal [label="take: the proposed move, once"];
+    execute_refusal_answer -> fix_execute_refusal [label="iterate: fix again with their note"];
+    execute_refusal_answer -> run_hold [label="hold"];
+    execute_refusal_answer -> own_run_failed_or_abandoned [label="hand back"];
+    gate_off_script_forge -> forge_refusal_answer;
+    forge_refusal_answer -> respond_post_execute [label="take: the human posted or resolved by hand"];
+    forge_refusal_answer -> respond_post_execute [label="iterate: the cause is fixed"];
+    forge_refusal_answer -> report_held_threads [label="hold: the tool already set hold"];
+    forge_refusal_answer -> own_run_failed_or_abandoned [label="hand back"];
+    report_held_threads -> threads_held_open;
+    run_field_set_hold_clear -> report_outcome;
 
-    "Next thread to act on: offered threads, then gate-1: reply rows?" -> "post: decided for this thread?" [label="next thread; a held resume walks only the held threads; a thread held this pass acts on nothing"];
-    "Next thread to act on: offered threads, then gate-1: reply rows?" -> "respond-post decided by a gate or a handed post?" [label="threads done"];
-    "post: decided for this thread?" -> "Thread already carries this receive-review run's reply?" [label="yes"];
-    "Thread already carries this receive-review run's reply?" -> "resolve: decided for this thread?" [label="yes: count it posted, never post again"];
-    "Thread already carries this receive-review run's reply?" -> "Forge for the reply?" [label="no: post it"];
-    "post: decided for this thread?" -> "resolve: decided for this thread?" [label="no"];
-    "Forge for the reply?" -> "mr_reply_thread {mrUrl, discussionId, body}" [label="GitLab"];
-    "Forge for the reply?" -> "Post the reply on GitHub with gh" [label="GitHub"];
-    "mr_reply_thread {mrUrl, discussionId, body}" -> "mr_reply_thread result?";
-    "mr_reply_thread result?" -> "resolve: decided for this thread?" [label="posted"];
-    "mr_reply_thread result?" -> "Retried this mr_reply_thread once?" [label="error"];
-    "mr_reply_thread result?" -> "STOP: a refused mr_reply_thread goes to its off-script gate, never the GitLab CLI" [label="tempted by the GitLab CLI"];
-    "Retried this mr_reply_thread once?" -> "Thread already carries this receive-review run's reply?" [label="no: re-test, then retry"];
-    "Retried this mr_reply_thread once?" -> "Off-script gate: the forge refused the reply" [label="yes"];
-    "STOP: a refused mr_reply_thread goes to its off-script gate, never the GitLab CLI" -> "Off-script gate: the forge refused the reply";
-    "Off-script gate: the forge refused the reply" -> "Answer at the refused-reply off-script gate?";
-    "Answer at the refused-reply off-script gate?" -> "Make the recorded move once for the refused reply" [label="take"];
-    "Answer at the refused-reply off-script gate?" -> "Thread already carries this receive-review run's reply?" [label="iterate: re-test, then retry with their note"];
-    "Answer at the refused-reply off-script gate?" -> "Hold the thread the forge refused and report the refusal verbatim" [label="hold: this thread only"];
-    "Answer at the refused-reply off-script gate?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="hand back"];
-    "Make the recorded move once for the refused reply" -> "resolve: decided for this thread?";
-    "Post the reply on GitHub with gh" -> "resolve: decided for this thread?";
-    "resolve: decided for this thread?" -> "Forge for the resolve?" [label="yes"];
-    "resolve: decided for this thread?" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="no"];
-    "Forge for the resolve?" -> "mr_resolve_thread {mrUrl, discussionId}" [label="GitLab"];
-    "Forge for the resolve?" -> "Resolve the thread on GitHub with gh" [label="GitHub"];
-    "mr_resolve_thread {mrUrl, discussionId}" -> "mr_resolve_thread result?";
-    "mr_resolve_thread result?" -> "Next thread to act on: offered threads, then gate-1: reply rows?" [label="resolved"];
-    "mr_resolve_thread result?" -> "Retried this mr_resolve_thread once?" [label="error"];
-    "mr_resolve_thread result?" -> "STOP: a refused mr_resolve_thread goes to its off-script gate, never the GitLab CLI" [label="tempted by the GitLab CLI"];
-    "Retried this mr_resolve_thread once?" -> "mr_resolve_thread {mrUrl, discussionId}" [label="no"];
-    "Retried this mr_resolve_thread once?" -> "Off-script gate: the forge refused the resolve" [label="yes"];
-    "STOP: a refused mr_resolve_thread goes to its off-script gate, never the GitLab CLI" -> "Off-script gate: the forge refused the resolve";
-    "Off-script gate: the forge refused the resolve" -> "Answer at the refused-resolve off-script gate?";
-    "Answer at the refused-resolve off-script gate?" -> "Make the recorded move once for the refused resolve" [label="take"];
-    "Answer at the refused-resolve off-script gate?" -> "mr_resolve_thread {mrUrl, discussionId}" [label="iterate: retry with their note"];
-    "Answer at the refused-resolve off-script gate?" -> "Hold the thread the forge refused and report the refusal verbatim" [label="hold: this thread only"];
-    "Answer at the refused-resolve off-script gate?" -> "run_stage {action: fail, stage: <stage>, reason}" [label="hand back"];
-    "Make the recorded move once for the refused resolve" -> "Next thread to act on: offered threads, then gate-1: reply rows?";
-    "Resolve the thread on GitHub with gh" -> "Next thread to act on: offered threads, then gate-1: reply rows?";
+    read_posted_threads_gh -> gh_read_complete;
+    gh_read_complete -> picks_need_push [label="yes"];
+    gh_read_complete -> run_field_set_hold_held [label="no, or an error: report it verbatim"];
+    picks_need_push -> git_branch_current [label="yes"];
+    picks_need_push -> next_github_thread [label="no: push nothing"];
+    git_branch_current -> git_rev_parse_push;
+    git_rev_parse_push -> branches_match_mr;
+    branches_match_mr -> git_push [label="yes"];
+    branches_match_mr -> hold_fix_rows [label="no, or an error"];
+    git_push -> push_result;
+    push_result -> next_github_thread [label="pushed"];
+    push_result -> hold_fix_rows [label="any error"];
+    push_result -> stop_push_after_failed [label="tempted to push from the shell or force"];
+    stop_push_after_failed -> hold_fix_rows;
+    hold_fix_rows -> next_github_thread [label="every other reply still acts"];
+    next_github_thread -> post_reply [label="post: due (picked, or a gate-1: reply row), not held this pass, and the thread lacks this run's reply"];
+    next_github_thread -> resolve_decided [label="no post due: not picked, held this pass, or already there"];
+    next_github_thread -> github_fix_held [label="threads done"];
+    post_reply -> resolve_decided;
+    resolve_decided -> resolve_thread [label="yes, not held this pass"];
+    resolve_decided -> next_github_thread [label="no, or held this pass"];
+    resolve_thread -> next_github_thread;
+    github_fix_held -> gate_record_held [label="yes"];
+    github_fix_held -> report_outcome [label="no"];
+    gate_record_held -> run_field_set_hold_held;
+    report_outcome -> verb_owns_run;
 
-    "respond-post decided by a gate or a handed post?" -> "run_decision {contract: gate@1, scope: respond-post, selection, decidedBy}" [label="yes, or a held resume re-records"];
-    "respond-post decided by a gate or a handed post?" -> "Any thread held this pass: a failed push or a forge refusal?" [label="no: nothing was offered or handed"];
-    "run_decision {contract: gate@1, scope: respond-post, selection, decidedBy}" -> "Any thread held this pass: a failed push or a forge refusal?";
-    "Any thread held this pass: a failed push or a forge refusal?" -> "run_field_set {key: hold, value: held, stage: <stage>}" [label="yes"];
-    "Any thread held this pass: a failed push or a forge refusal?" -> "Report the outcome (to the caller when it owns the gates)" [label="no"];
-    "Report the outcome (to the caller when it owns the gates)" -> "This verb started or resumed the run?";
-    "This verb started or resumed the run?" -> "run_stage {action: done, stage: receive-review}" [label="yes"];
-    "This verb started or resumed the run?" -> "Review feedback answered" [label="no: inherited, the caller closes"];
-    "run_stage {action: done, stage: receive-review}" -> "run_status {status: done|abandoned}";
-    "run_status {status: done|abandoned}" -> "Review feedback answered";
-    "run_stage {action: fail, stage: <stage>, reason}" -> "receive-review stage failed";
-    "run_decision {contract: gate@1, scope: hold:<stage>:<attempt>, selection: {reason}, decidedBy}" -> "run_field_set {key: hold, value: <their words, or held>, stage: <stage>}";
-    "run_field_set {key: hold, value: <their words, or held>, stage: <stage>}" -> "Held: end the turn naming the run and stage";
-    "run_field_set {key: hold, value: held, stage: <stage>}" -> "Threads held: run left open for a resume";
+    verb_owns_run -> run_close [label="yes: outcome done"];
+    verb_owns_run -> feedback_answered [label="no: inherited, the caller closes"];
+    own_run_failed_or_abandoned -> run_close [label="yes: close it failed or abandoned, with the reason"];
+    own_run_failed_or_abandoned -> run_stage_fail [label="no: inherited, the caller decides"];
+    run_close -> closed_as;
+    closed_as -> feedback_answered [label="done"];
+    closed_as -> stage_failed [label="failed or abandoned"];
+    run_stage_fail -> stage_failed;
+    run_hold -> held_end_turn;
+    run_field_set_hold_held -> threads_held_open;
 }
 ```
 
 ## Run
 
-Outside a pipeline this verb is its own run, so the console shows it and
-the Stop hook covers its pane. Pass `runDb` on every `run_*` call; nothing
-is exported.
-
-An inherited run (a caller handed a `runDb` that `run_snapshot` shows
-`running`) is the caller's to close: its `run.current_stage` is your
-stage, and you close nothing at the end (no `run_stage` done, no
-`run_status`). A hand back still fails that stage (Off-script gate).
-
-When a surface launched this pane (the `spawnedBy` case), start fresh:
-another pane's live run is not yours to resume.
-
-`run_start` takes `flags`, this verb's value in the block below, verbatim;
-`skillDir`, this skill's own directory; and `spawnedBy` when a board or
-another surface launched this pane.
+`run_enter` starts, resumes or inherits the run, or returns the running
+candidates; never list, read or build run dbs by hand. It takes `flags`
+(this verb's block below, verbatim), `skillDir`
+(this skill's directory), `stage: receive-review`, `runDb` only when a
+caller handed one, `resume` when the caller or the developer names a run
+id or a handed `--report` carries a `receive-review-run: <run id>` line
+(that id, even in a pane a surface launched), and `spawnedBy` only when a
+board or another surface launched this pane.
 
 {{run-start.flags:receive-review}}
 
-A result without `ok: true` and a `runDb` means this rt predates the run
-tools.
+Pass the returned `runDb` to every `run_*` and gate call; nothing is
+exported. `run_enter` is the first call of a pane with no run in hand: a
+caller re-entering this pane after its hand-back continues at the box that
+handed back, on the run the pane already holds. `<stage>` is
+`receive-review` on a run you started or resumed; on an inherited run
+(`mode: inherited`) it is the result's `at.stage`, and the caller closes
+the run. A handed `runDb` whose run is no longer running is not inherited:
+the result says `handedRunDb: "not-running"` and the run starts as if none
+was handed.
 
-`<stage>` below is `receive-review`, or the inherited run's
-`current_stage`. Every gate in this verb writes its `gate` field with
-`stage: <stage>`, and its decision. The close runs only when this verb
-started or resumed the run, after every reply has posted and every
-decision is recorded: `run_stage` with `action: "done"`, `stage:
-"receive-review"`, then `run_status` with `status: "done"` (or `abandoned`
-when a gate said so).
+Every gate passes `runDb` and `stage`, so the gate tools write the run's
+gate fields; `respond-plan` and `respond-post` record only through this
+verb's `gate_record`.
 
-A gate's Hold answer that ends the turn (the edge to Held: end the turn
-naming the run and stage), with a run, own or inherited, is recorded
-before the turn ends: `run_decision` with `contract: "gate@1"`, `scope:
-"hold:<stage>:<attempt>"`, `selection: {"reason": "<their words>"}`,
-`decidedBy: <the answer's by>`, then `run_field_set` with `key: "hold"`,
-`value: "<their words, or held>"`, `stage: <stage>`. A thread hold is
-the other case: threads left held (a failed push, or a forge-refusal Hold
-that holds only its thread) and a posted-already read that returned no
-result or an error record no `hold:<stage>:<attempt>` decision (held
-threads keep their `"held"` entry), and set `run_field_set` with `key:
-"hold"`, `value: "held"`, `stage: <stage>` before the turn ends. A read
-error is reported verbatim (to the caller when it owns the gates), the
-run stays open, and a resume retries the read. The
-clarify Hold comes before any run and records nothing. A resume clears
-the field.
+Each loop counter is one `run_budget {runDb, key, limit, stage}` call on
+the counted failure, and its `<key> spent?` diamond reads `exhausted`. The
+count lives on the run: after a compaction or resume, read a counter you
+cannot remember with `increment: 0`, never restart it.
+
+| Key | Limit | Charged when |
+|---|---|---|
+| `respond-plan-open` | 3 | a respond-plan `gate_open` refusal names a source field |
+| `respond-post-open` | 3 | a respond-post `gate_open` refusal names a source field |
+| `fix:<threadId>` | 3 | that thread's fix fails its tests and checks |
+| `post-execute-fix` | 2 | a `respond_post_execute` refusal names something to fix (fixed once; the second opens the off-script gate) |
+
+`respond_post_execute` bounds its own reply, resolve and push retries.
+
+A Hold that ends the turn, own or inherited run, is one `run_hold {runDb,
+stage, reason, decidedBy}`: `reason` the human's words or the quoted
+error, `decidedBy` the answer's by. The clarify Hold comes before any run
+and records nothing.
+
+A thread hold makes no `run_hold` call: the run stays open with `hold` at
+`held` (on GitLab `respond_post_execute` sets it and re-records the held
+ids; on GitHub this verb does both). A resume calls the post side again,
+acting only on the held threads; `run_enter` clears the field.
+
+The close runs only when this verb started or resumed the run, once
+nothing is left to post: `run_close {runDb, workType: receive-review,
+stage: receive-review, outcome: done}`; a failure (a forge read error)
+closes `failed`, a hand back `abandoned`, with `reason` the quoted error
+or the why. On an inherited run either is `run_stage {action: fail,
+stage, reason}`, and the caller decides.
+
+`respond_post_execute` reads the run's `mr` and `branch`, so this verb
+records both on any run that lacks them, inherited included. Run identity
+below governs `ticket`.
 
 {{include:run-identity}}
 
 ## Steps
 
-### Inherit the caller's run: no run_start, no close
-
-A caller handed you a `runDb` (a pipeline invoking this verb carries it in
-context) and `run_snapshot` with that `runDb` shows `run.status` =
-`running`: you were invoked from inside that run, you inherit it,
-`run.current_stage` is your stage, you pass that handed `runDb` on every
-`run_*` call, and you close nothing at the end. A caller that owns the
-gates may hand the respond-plan open's path or the saved verdict report's
-path alongside `{plan}`, and the rows read drafts from them.
-
 ### Gate clarify for receive-review: Resume / Start fresh / Hold
 
-Launched by hand, the Resume offer comes first: call `run_list` with
-`repo` (the `--repo` value in the flags block under Run) and keep the runs
-whose `status` is `running` and `work_type` is `receive-review`; never
-read the run dbs by hand. Any found: gate `clarify`, one sentence naming
-each candidate's `spawned_by`, `started_at`, and `current_stage`, then the
-structured-question tool with one **Resume** option per candidate
-(recommended for a run this session started earlier; a run another live
-pane owns is not yours) / **Start fresh**; **Hold**.
+No run of yours exists yet, so this gate is the structured-question tool
+in the pane. One sentence naming each `run_enter` candidate's
+`spawnedBy`, `startedAt` and `currentStage`, then one **Resume** option
+per run this pane may take (`ownSession: true`, recommended; or one no
+live pane owns; a run another live pane owns is named unavailable), then
+**Start fresh**, **Hold**. A surface-launched pane never reaches this
+gate: with `spawnedBy` and no `resume`, `run_enter` starts fresh. Resume
+passes the picked `runId` as `resume`; Start fresh passes `fresh: true`.
+Hold records nothing and ends the turn.
 
-### Resume the receive-review run from run_snapshot
+### The refused receive-review run_enter carried resume?
 
-Your `runDb` is `<home>/.mattstack/runs/<repo>/<its id>/state.db` (the
-candidate row's `id`, the home directory written out, never `~`). The
-`run_stage` start is a new attempt, which re-records this session, and the
-`run_field_set` clears the hold. Re-enter with `run_snapshot`'s decisions
-and do not re-ask a question it already answered. Keep `runDb` and pass it
-on every `run_*` call.
+A refused resume means the run is gone or no longer running: say so in one
+line, then start fresh, keeping the first call's `spawnedBy`. Any other
+refusal ends the verb: quote it verbatim, whole, never a paraphrase or a
+guessed cause. Only when there is no `run_enter` tool at all, say rt
+predates the run tools; update rt.
 
-What the snapshot records picks the re-entry:
+### What does the receive-review snapshot record?
 
-- **No `respond-plan` record:** nothing is decided; resolve the change and
-  fetch the threads again.
-- **`respond-plan` recorded, no `respond-post` record:** rewrite the report
-  rows from the record alone (the snapshot-only reading under Rewrite the
-  receive-review report rows), then walk the rows. A fix row whose commit
-  is already on the branch implements nothing again: its Fixed reply is
-  written from that commit, and nothing is re-committed.
-- **A `respond-post` record carrying `"held"`:** read each thread on the
-  forge first (Posted already), then treat every other offered thread as
-  already acted on and act only on the held threads. Push only when a held
-  thread is a `gate-1: fix` row whose picks post or resolve it, and act on
-  those rows only once the branch check and the push succeed (Push before
-  any Fixed reply); a held override or `gate-1: reply` row acts with no
-  push. A held thread the forge already shows carrying this run's reply
-  goes straight to its resolve decision. Then record again, without
-  `"held"`, or with the threads still held. The reply due for a held
-  thread comes from the report rows when the report exists; in a fresh
-  pane without it, from the snapshot: the respond-post entry's `text` when
-  it has one, else the respond-plan record read as the snapshot-only
-  reading under Rewrite the receive-review report rows describes. A held
-  override posts only the text recorded for it (the respond-post entry's
-  `text`, else the respond-plan record's `texts` entry). With neither, it
-  is never posted as a redraft the developer has not seen: redraft it
-  (Redraft the override's reply) and offer it, with every held thread not
-  yet posted, at a new respond-post gate. A held fix row with neither gets its Fixed reply text written again from the
-  committed change, in the shape Commit the fix and finalize its Fixed
-  reply gives it, before it posts; nothing is committed again.
-- **`respond-post` recorded, nothing held:** report the outcome and close.
+The resumed run's decisions pick the re-entry; a question they answered is
+never asked again.
+
+- **No `respond-plan` record:** nothing is decided; go on as a fresh run.
+- **`respond-plan` recorded, no `respond-post` record:** rewrite the
+  report rows from the recorded decision joined to the stored cards (the
+  `run_field_get` of `extra.gate-source.respond-plan`), then walk the
+  rows. Never record respond-plan again: a second record moves its
+  `decided_at`, which `respond_post_execute` reads for the decision's
+  freshness and for which notes by this account count as already posted.
+- **`respond-plan` recorded with `code-changes: revise`, no
+  `respond-post` record, nothing handed, and the snapshot's
+  `extra.gate-source.respond-plan` field `at` later than that decision's
+  `decided_at`:** the revise already re-adjudicated and opened the next
+  round, which nobody has answered. Re-present that pending round from its
+  stored source (`Write the pending round's source for gate_open`): no
+  dispatch, no record, and nothing implemented or posted until a fresh
+  answer to it. With the source stored at or before the revise, the revise
+  never ran: the previous bullet's rows lead to its fresh dispatch, with
+  the revise's `notes` entry for `code-changes` as the note.
+- **`respond-plan` recorded with `code-changes: revise`, no
+  `respond-post` record, and the caller handed a `{plan}`:** the revise
+  re-adjudicated and stored a new respond-plan source, and the handed plan
+  answers that newer open. Take it through `What did the caller hand
+  receive-review?` as an unspent plan: it records once against the stored
+  cards. The revise record never acts (`respond_post_execute` refuses
+  it), so rows rebuilt from it drop the human's newer answer.
+- **The same, and the caller handed a `{post}`:** record it at once
+  (`answers`, `decidedBy`), then the post side; the rows walk nothing.
+- **A `respond-post` record, held or not:** the post side again, never a
+  close on the record alone: a pane can record and die before it posts.
+  On GitLab `respond_post_execute` counts what landed. On GitHub the gh
+  read does, and the reply texts come from the stored cards, never this
+  conversation: for a `gate-1: reply` row the
+  respond-plan decision's `texts` entry, else its card's `reply.text`; for
+  an offered thread the respond-post decision's `text`, else its `reply@1`
+  card's `text` (`run_field_get {runDb, key:
+  extra.gate-source.respond-post}`).
+
+### What did the caller hand receive-review?
+
+**Decision intake.** A caller that owns the gates hands decided answers
+instead of a gate answer: `{plan}` alone (a board wrapper, after its own
+first gate; `{post}` follows when respond-post offers a thread), or a
+combined `{plan, post}`. Each half is that gate's raw per-question answers
+(keyed by question id, option values verbatim); the caller's `by` records
+as `decidedBy`. A `{plan}` asks nothing; the `post` half waits for gate
+respond-post. A `{post}` alone records at once: its plan decision is on
+the run, unless the pane is fresh with no run line or a refused resume,
+and then `respond_post_execute`'s refusal goes to its off-script gate,
+quoted. In the pane that handed the open back, the caller re-enters at
+that hand-back box instead.
 
 ### Resolve the change and record its identity
 
-The change and its requirements come from the caller or domain adapter: the
-diff range, plus the requirements it is judged against. Report a fetch
+The change and its requirements come from the caller or domain adapter:
+the diff range, plus the requirements it is judged against. Report a fetch
 failure or a mismatched pair exactly as found; never fabricate the missing
 half.
 
-When the run is yours, record the resolved change per Run identity above:
-`mr` (the MR/PR URL), `branch` (its source branch), `ticket` (the id it
-names, when one exists).
-
-On GitLab the threads come from `mr_threads` with the MR (`mrUrl`, or
-`repoName` plus `iid`), read from GitLab on every call; with neither in hand,
+On GitLab the MR is `mrUrl`, or `repoName` plus `iid`; with neither,
 `mr_for_branch` with `repoName` = this checkout and `branches: [<the
-checked-out branch>]` gives the iid.
+checked-out branch>]` gives the iid. On GitHub it is the PR's URL. Then
+record `mr` (the MR/PR URL) and `branch` (its source branch) on whatever
+run this is, keeping a field the run already records (an inherited run's
+`mr` above all; read an inherited run's with `run_field_get {runDb, key}`,
+an unset-key error meaning not recorded). `ticket` is recorded only on a
+run this verb started or resumed, per Run identity.
 
 ### Report that no open MR has this branch as its source
 
-A null entry from `mr_for_branch` means GitLab has no open MR with that
-branch as its source: report that and stop.
+A null entry from `mr_for_branch`: report that no open MR has that branch
+as its source, and stop. An `mr_for_branch` or `mr_threads` error is never
+"no open MR" or "no threads": quote it unedited, and the stage
+fails with it as the reason.
 
-An `mr_for_branch` or `mr_threads` error is never read as "no open MR" or
-as "no threads". Quote it, not paraphrased: GitLab's 404 or 403 is the usual
-case, though an error can also be rt's (target not resolved, daemon
-unreachable, timeout). The stage fails with that text as the reason.
+### Executing a caller-handed {plan}?
+
+A caller-handed `{plan}` not yet spent is recorded, never re-adjudicated.
+The record is `gate_record {runDb, stage,
+scope: respond-plan, shape: respond-plan, answers: <the plan>, decidedBy}`,
+plus `contextDropped: true` when the handed `--report` carries
+`gate-1-context: dropped`. The rows come from the record; the thread read
+(skipped when the threads are already in this conversation) supplies only
+the bodies the fix and override rows need. The record needs the
+respond-plan source on the run first: `respond_post_execute` refuses a run
+without it, and a source stored after the decision makes it stale. The
+plan is spent once recorded: go to the rows, never record it again; a
+revise adjudicates afresh. A plan handed to a resumed run whose only
+respond-plan record says `code-changes: revise` is not yet spent: that
+record answered the earlier open, and this plan answers the open the
+revise built.
+
+### Write the pending round's source for gate_open
+
+The `run_field_get` value is `{"gate": <id or null>, "source": {...}}`. A
+non-null `gate` is the in-pane gate the earlier pane opened, and a human
+may have answered it on another surface after that pane went away:
+`gate_reconcile` reads it first, and an `answered` status goes straight to
+`gate_record {..., gateId: <that id>}` and the rows, never a second ask.
+Otherwise write its `source`, unchanged, to `<dir>/respond-plan.source.json` (`<dir>`
+as `Build the open` makes it), then open or hand back exactly as a freshly
+built round would. The threads, verdicts and replies are the pending
+round's; never re-read threads, re-adjudicate or redraft for it. A
+caller that owns the gates gets the verdict table from the stored cards:
+one row per thread question, its `label`, `context.verdict.call` and
+`context.reply.text`.
+
+### Read the handed plan's threads on GitHub with gh
+
+Fetch every thread with `gh`, resolved ones included: no human-thread
+filter applies to a handed plan.
+
+### Keep exactly the threads the handed plan names
+
+Keep every thread the plan names, resolved or not: the plan decides its
+row. Capture each one's id, `file:line` and full note chain. A named
+thread the forge no longer returns is held and reported. Unresolved
+threads the plan does not name get no row; the outcome report names them
+for the next run.
+
+### The run stores a respond-plan source for the handed plan?
+
+- **Yes:** record the plan against those cards.
+- **No** (an unset-key error: a gate parked before this version, no run
+  line, or a refused resume): build the open with no new adjudication or
+  drafts, each card from the handed `--report`'s verdict table row
+  (verdict, recommended action, reply) and the thread read (id,
+  `file:line`, author, note chain). It has exactly the threads the plan
+  names, each under the question id the plan keys it by (`thread-<n>`),
+  plus `code-changes`. A thread the report has no row for gets `reply:
+  {"kind": "none"}`, so its `reply:` answer without `text` records as an
+  override. Store it with the hand-back `gate_open`, then record; never
+  record the plan without the stored source.
 
 ### Read the PR's review threads with gh
 
 On GitHub, fetch the threads with `gh`.
 
-### Keep only unresolved human threads
+### Keep only unresolved human threads (GitHub)
 
-Keep only **unresolved human** threads: drop system notes and bot authors.
-Capture each thread's id, its `file:line`, and its full note chain.
-
-With a caller-handed `{plan}` not yet spent, keep every thread the plan
-names, resolved or not: the plan decides its row, not the resolved state.
-A named thread the forge no longer returns is held and reported.
-Unresolved threads the plan does not name get no row; the outcome report
-names them for the next run. The read is what every row the plan gives
-needs: the threads' ids, `file:line` and note chains. Fix rows need them
-to implement, and override rows need them to redraft. Record the plan,
-normalized as the decision intake under Build the open says, `decidedBy`
-the decider the caller names, then go on to the rows; never dispatch the
-adjudicator or draft a new verdict table for it. A plan answers an
-adjudication the human already saw, so a fresh one would change the drafts
-it approved.
-
-In a fresh pane, a handed plan is spent when `run_snapshot`'s latest
-respond-plan record is that plan. Not a revise: go to the rows from that
-record (the snapshot-only reading), never record it again. A revise:
-adjudicate afresh.
-
-A GitLab fact the thread read does not return is read as in "Reading a
-GitLab fact no read tool returns".
+On GitLab the `mr_threads` filter applies this rule: its result is the set to adjudicate, never filtered again, no
+dropped thread added back. On GitHub apply it by hand: keep only
+**unresolved** threads a **person** opened, dropping resolved threads,
+system notes and bot authors (a username that starts `project_<n>_bot` or
+`group_<n>_bot`, is `ghost`, or ends in `-bot`, `_bot` or `[bot]`).
+Capture each thread's id, `file:line` and full note chain.
 
 ### Reading a GitLab fact no read tool returns
 
-At any step of this verb, a GitLab fact the read tools do not return is
-read with `gitlab_get {repoName, path}`: `repoName` = the checkout or
-tree this verb already targets, `path` relative to the API root with `:id`
-for this project, for example `projects/:id/merge_requests/<iid>/versions`.
-The read is part of the step that needs it, not an off-script move, so it
-opens no gate. A GitLab error is quoted as GitLab wrote it. Its refusal of
-a credential path is final.
+A GitLab fact the read tools do not return is read with `gitlab_get
+{repoName, path}`: `repoName` = the checkout or tree this verb targets,
+`path` relative to the API root with `:id` for this project (for example
+`projects/:id/merge_requests/<iid>/versions`). It opens no gate. Quote a
+GitLab error as written; its refusal of a credential path is final.
 
 ### Dispatch one fresh-context adjudicator over all the review threads
 
@@ -577,65 +662,50 @@ self-review as an afterthought at the end does not satisfy this: the fresh conte
 comments are adjudicated, not a final gut-check.
 </HARD-GATE>
 
-Hand the dispatch flow the numbered threads (`file:line` plus note chains),
-the requirements, and the diff range; it owns the template, the subagent,
-and the standard blocks. The dispatch flow is below, after the Off-script
-gate section.
+Hand the dispatch flow (below, after the Off-script gate section) the
+numbered threads (`file:line` plus note chains), the requirements and the
+diff range; it owns the template, the subagent and the standard blocks.
 
 ### Draft the verdict table and one reply per thread
 
-Present the verdict table plus a drafted reply per thread, then the
-recommendation, in one structured block (the verdict report) -- nothing is
-written to code, nothing posted yet. Bucket each thread by its verdict
-(`valid` / `pushback` / `needs-clarification`) and its recommended action
-(`fix` / `reply` / `skip`); gate respond-plan reads from this bucketing,
-not from a fresh pass over the threads.
+Present the verdict table, a drafted reply per thread, then the
+recommendation, in one structured block (the verdict report); nothing is
+written to code or posted yet. Bucket each thread by verdict (`valid` /
+`pushback` / `needs-clarification`) and recommended action (`fix` /
+`reply` / `skip`); gate respond-plan reads this bucketing.
 
 **Reply content is a seam.** **No Reply rules section below** (the slot is
 unbound): **REQUIRED SUB-SKILL** `superpowers:receiving-code-review`. **A
 Reply rules section below**: follow it. Compose in the voice the Writing
-style section below names. On top of either branch, these hold:
+style section below names. On top of either branch:
 
 - **Per verdict.** `valid` -> a technical acknowledgment of the fix.
-  `pushback` -> the technical reason, referencing the code or test that shows
-  it. `needs-clarification` -> one crisp question.
-- **An ask is an ask.** If the reply asks the reviewer anything, its verdict
-  is `needs-clarification`, not a `pushback` ending in a question: when the
+  `pushback` -> the technical reason, referencing the code or test that
+  shows it. `needs-clarification` -> one crisp question.
+- **An ask is an ask.** A reply that asks the reviewer anything is
+  `needs-clarification`, not a `pushback` ending in a question: when the
   answer would change the ruling, the question is the ruling.
 - **No performative openers.** A reply states the technical content. An
-  opener acknowledging the comment's quality or offering thanks is
-  performative and carries none: "Good call", "You're right", "Great catch",
-  "Nice find", "Thanks" -- and every variant, "Confirmed, thanks." included.
-  Open on what the code does or what changes.
+  opener acknowledging the comment's quality or offering thanks carries
+  none: "Good call", "You're right", "Great catch", "Nice find", "Thanks"
+  -- and every variant, "Confirmed, thanks." included. Open on what the
+  code does or what changes.
 
 ### Build the open
 
-The verb adjudicates; it never decides what gets fixed or posted. Decision
-intake: when the caller hands decided answers -- the `{plan}`
-half alone (a board wrapper hands it after its own first gate, `{post}`
-following later when gate respond-post offers a thread) or a combined `{plan, post}` object from a
-caller that collected both up front -- `plan` is recorded at the
-`Executing a caller-handed {plan}?` decision after Keep only unresolved
-human threads, before any adjudication, and asks nothing: its
-per-question answers, keyed by question id with verbatim option strings,
-are the decision. A handed plan not yet spent never reaches this step. Use
-the decider the caller names alongside it. Record
-that `plan` with the same `run_decision` a pane answer gets, `decidedBy`
-that decider. Its answers are per-question, so normalize them first into
-exactly the selection under Gate respond-plan through gate-protocol, by
-the join a pane answer gets: unwrap each `{value, note, text}` object to
-its `value`, split the value at the first `:`, and key `threads` by the
-thread id read out of it (never by `thread-<n>`), with `texts`,
-`overrides`, `notes` and `code-changes` filled as that bullet says. A handed plan answers one adjudication: once recorded it is
-spent (a revise re-adjudicates and builds a new open). The `post` half
-of a combined object waits for gate respond-post, where it is the caller-handed `post`. Every other path
-builds the open first.
+The verb adjudicates; it never decides what gets fixed or posted. A
+handed `{plan}` not yet spent reaches this step only to store its source;
+every other path, a revise after a spent plan included, builds the open
+from the verdict report.
 
 The gate (`respond-plan`, gate 1; `respond-post` is gate 2) carries
-structured context (gate-protocol's Structured context), built from the
-verdict report's buckets. Make one scratch directory (`mktemp -d`) and
-write its path out literally from then on: each tool call is a fresh
-shell. Write `<dir>/respond-plan.source.json`:
+structured context per gate-protocol's
+`## Structured context (gate-ctx@1)` and its sidecar
+`structured-context.txt`. Make one scratch
+directory, `<dir>`, inside this session's scratchpad (the Claude Code temp
+root, the only place `gate_open` reads `sourcePath` and writes `outPath`),
+never `mktemp -d`, and spell its path out literally from then on. Write
+`<dir>/respond-plan.source.json`:
 
 ```json
 {"context": {"gate-ctx": "plan@1", "reviewer": "<primary reviewer>",
@@ -659,12 +729,10 @@ shell. Write `<dir>/respond-plan.source.json`:
 ONE single-select question per unresolved thread, in verdict-table order,
 plus `code-changes`. A thread question's id is `thread-<n>` by 1-based
 position, its label the thread's `file:line`, its options that thread's
-verb triple with the thread id VERBATIM in the value and the bare verb in
-the label. The triple's member matching the verdict report's recommended action
-carries `"recommended": true` -- this is how the recommendation reaches
-the gate; rt-client normalization renders it as the label's
-"(Recommended)" suffix and capitalizes the bare verb, so labels stay
-lowercase here.
+verb triple with the thread id VERBATIM in the value and the bare
+lowercase verb as the label. The member matching the recommended action
+carries `"recommended": true`: that is how the recommendation reaches the
+gate.
 
 | Field | Filled from |
 |---|---|
@@ -676,327 +744,212 @@ lowercase here.
 | `severity` | the reviewer's own words, never the verdict: an explicit softener (nit, optional, non-blocking, minor, suggestion) is `non-blocking`; a question that asks for no change is `question`; a thread with no ask (a summary, an FYI) is `none`; any other change request is `blocking` |
 | `claim` | `summary`: the reviewer's ask in one or two sentences, their wording where it fits; `points`: their supporting specifics, one per string, the key omitted when there are none |
 | `verdict` | `call`: the adjudicator's verdict word verbatim; `note`: its one-line reason (the warranted change, the pushback reason, or the question to ask) |
-| `reply` | by the verdict report's recommended action: `reply` is `verbatim` with the drafted reply as `text`; `fix` is `direction` with the drafted reply (it finalizes at Commit the fix and finalize its Fixed reply); `skip` is `{"kind": "none"}` |
+| `reply` | by the recommended action: `reply` is `verbatim` with the drafted reply as `text`; `fix` is `direction` with the drafted reply (it finalizes at Commit the fix and finalize its Fixed reply); `skip` is `{"kind": "none"}` |
 | `fix` option `description` | the planned change and where, from the adjudicator's `valid` entry; a thread with no such entry gets `implement the reviewer's ask as written` |
 
-Fit it:
+Never shorten a reply to make an open fit: `gate_open` fits it, and a
+context it cannot fit is dropped loudly (`contextDropped`).
 
-```bash
-sh "${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh" fit < <dir>/respond-plan.source.json > <dir>/respond-plan.open.json
-```
+### respond-plan gate_open result?
 
-The output file IS the open: its
-`.context` and `.questions` go to the gate verbatim, fitted to the shared
-budget (points and notes trimmed, or every context prose when nothing
-else fits; `"fits": false` means even the prose is over, and the daemon
-will drop contexts loudly). Never hand-edit it, and never shorten a reply
-to make an open fit.
+- **Opened** (the direct run): keep `id`, `paneAction`, `formContext`,
+  `formChunks` and `contextDropped`. The run stores the untrimmed source
+  as `extra.gate-source.respond-plan`, the cards `gate_record` and a
+  resumed pane read.
+- **Handed back, no unspent plan:** the open is at `outPath` in
+  `gate-ctx.sh fit`'s shape, its source beside it, and the run stores the
+  source. Keep `contextDropped` and `droppedContexts`.
+- **Handed back, an unspent handed plan:** the source is stored (`gate:
+  null`) and nothing goes to the caller. Record the plan, with
+  `contextDropped: true` when this result or the handed `--report` says
+  so.
+- **Refused:** nothing opened, one problem per line. A line naming a
+  question or a source field is fixable; a refusal no source fix can mend
+  (an unreadable file, a path outside the read roots) goes straight to the
+  off-script gate.
 
-### Fix the respond-plan source the fit names
+Only `gate_open` fits the open: a hand-edited open, a shortened reply or a
+fit with the vendored script is this diamond's STOP.
 
-Exit 1 prints one line per contract problem, naming the question and the
-field: fix the source and rerun. The counter is fit attempts within this
-build of the open.
+### Fix the respond-plan source the gate_open refusal names
+
+Fix exactly the question and field each refusal line names in
+`<dir>/respond-plan.source.json`, never by shortening a reply, then open
+again through `Caller owns the receive-review gates at respond-plan?`. A
+take makes the recorded move once, then opens again.
 
 ### Off-script gate: the respond-plan open will not fit
 
-Quote the third fit's problem lines as the `context`. Propose, spelled in
-full, one source change for the fields the fit named, never a shortened
-reply or a hand-edited open. The take makes that change, then the fit
-reruns. Ask it per the Off-script gate section.
+Quote the last refusal's lines as the `context`. Propose, spelled in full,
+one source change for the fields it named, never a shortened reply or a
+hand-edited open.
 
-### Make the recorded move once at the respond-plan fit
+### Write the receive-review-run line into the handed --report
 
-Make the source change the answer recorded, exactly once, then rerun the
-fit. Exit 0 goes on as normal. Exit 1 finds the attempt counter already
-spent and returns to this same off-script gate, where the human answers
-again.
+Before the hand-back, write one line `receive-review-run: <run id>`
+(`run_enter`'s `runId`) into the handed `--report`, replacing any earlier
+one; with no `--report`, write nothing. A fresh pane the board later hands
+a decision to passes that id as `resume` and lands on this run, which
+holds the stored gate source. The board never reads the line.
 
 ### Hand back the verdict table and the respond-plan open's path
 
-**A caller that owns the gates** (it delegated the adjudication to this
-verb and presents the gates itself; a board wrapper does, and says so when
-it delegates): open nothing. Hand back the verdict table plus the absolute
-path of `<dir>/respond-plan.open.json`; the caller opens its gate from
-that file's `.questions` and `.context`, then hands `{plan}` back.
-Record that `{plan}` with `run_decision` before rewriting the rows,
-normalized into the respond-plan selection as the decision intake under
-Build the open says, `decidedBy` the decider the caller names: this verb writes the
-respond-plan record whoever asked the gate.
+**A caller that owns the gates** (a board wrapper says so when it
+delegates): open nothing in the pane. Hand back the verdict table plus the absolute
+paths of `<dir>/respond-plan.open.json` (its source beside it as
+`respond-plan.source.json`) and of this skill's vendored
+`${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh`, which the caller runs in `prose`
+mode on that source; the caller opens its gate from the open file's
+`.questions` and `.context`, then hands `{plan}` back. When the result says
+`contextDropped` or lists `droppedContexts`, say so: the caller writes
+`gate-1-context: dropped` into its own report.
 
-### Gate respond-plan through gate-protocol
+The caller's `{plan}` comes back to this pane, in the same conversation:
+the re-entry goes on from this box with the `runDb` already in hand, and
+its first call is the record, `gate_record {runDb, stage, scope:
+respond-plan, shape: respond-plan, answers: <the plan>, decidedBy}`, with
+`contextDropped: true` when the open's result or the saved report says
+so. A fresh pane, with no hand-back in its conversation,
+starts at the trigger and resumes through the run line.
 
-**Otherwise** (a direct terminal run) the verb runs the gate itself. It asks with the
-`gate_ask` tool and answers a pane form with the `gate_answer` tool, per
-gate-protocol's Runs integration; a gate is never asked or answered from
-the shell.
+### Gate respond-plan: carry the opened gate through gate-protocol
 
-- `run_field_set` with `key: "gate"`, `value: "respond-plan"`, `stage:
-  <stage>`.
-- Run gate-protocol's Runs integration with kind `respond-plan`, the open
-  read from the file: read `<dir>/respond-plan.open.json` with the Read
-  tool; call `gate_ask` with its `questions` array, `kind:
-  "respond-plan"` and its `context`; act on the returned presentation as
-  gate-protocol says.
+**Otherwise** (a direct terminal run) the verb runs the gate itself: enter
+gate-protocol at `Trigger: a site opened its gate with gate_open` with the
+result and walk on from `paneAction?`; a gate is never asked or answered
+from the shell.
 
-  One question per thread keeps every question at three options, under
-  the form cap, so a herdr pane gets `form` for any thread count; never
-  fold several threads into one multi-select. It also makes reply / fix /
-  skip mutually exclusive per thread by construction. The thread id lives
-  in the option VALUE, never in the question id: every consumer joins by
-  reading each `answers` key other than `code-changes`, unwrapping a
-  `{value, note, text}` object to its `value`, and splitting at the first `:`;
-  `thread-<n>` is a container, nothing keys on it.
-- Over budget (the fit printed `"fits": false`, or the ask reported
-  `contextOmitted`): right after the ask and before waiting on any
-  answer, write one line, `gate-1-context: dropped`, into the saved
-  verdict report (when there is one). A resumed pane has no other way to know
-  those cards never showed their drafts (A dropped context, below).
-- In-pane form (gate-protocol's presentation: "form" branch): the form
-  never shows the JSON. Running
-  `sh "${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh" prose < <dir>/respond-plan.source.json`
-  prints the same open with every
-  context as prose: show its `.context` as one line in the pane before
-  the first form call, and make each thread question's form text its
-  `label`, a newline, its prose `context`, then `Reply, fix, or skip?`,
-  under the header `Thread <n>`. The form tool takes at most four
-  questions per call, so ask the thread questions in order, up to four
-  per call, until every thread is asked. Then one last call:
-  `code-changes`, only when some thread answered `fix:` (otherwise submit
-  its sentinel `skip` unasked, the same hide rule the board and console
-  cards apply), plus a pane-only `next` question of **Continue** /
-  **Iterate here** / **Hold**. That pane-only question never reaches the
-  registry, and Iterate / Hold are never extra options on a thread or
-  code-changes question: a fourth and fifth option there would push it
-  over the cap.
-  Continue: submit exactly ONE `gate_answer` after that last call,
-  carrying every thread answer plus `code-changes`, never one per chunk.
-  The pane's answer never carries `text`: a replacement reply the human
-  types in the form's free-text field rides as `note`, which makes a
-  `reply:` thread an override (Report rows, under Rewrite the
-  receive-review report rows).
-- `fix:<threadId>` implies that thread's reply; `skip:<threadId>` means
-  neither.
-- `run_decision` with `contract: "gate@1"`, `scope: "respond-plan"`, `selection: {"threads":{"<threadId>":"reply|fix|skip","...":"one entry per thread, keyed by the id read out of its answer value"},"texts":{"<threadId>":"<the answer's text>"},"overrides":["<threadId>"],"notes":{"<threadId>":"<the answer's note>"},"code-changes":"approve|revise|skip"}`, `decidedBy: <the answer's by>` (for a caller-handed `{plan}`, the decider the caller names).
-  `threads` values stay the bare verbs. `texts` holds one entry per
-  `reply:` answer that carries `text`; `overrides` lists every
-  `gate-1: override` thread (Report rows); `notes` holds one entry
-  per `gate-1: override` thread whose answer carried a note, that note;
-  omit any of the three keys when it would be empty.
+When the result says `contextDropped: true`, first write one line,
+`gate-1-context: dropped`, into the saved verdict report (when there is
+one), before presenting or waiting: a resumed pane has no other way to
+know those cards never showed their drafts. The record then passes
+`contextDropped: true`.
 
-**Edited replies.** A `reply:<threadId>` answer may be an object whose
-`text` is the reply to post for that thread, in place of the drafted
-`reply.text`: `{"value": "reply:<threadId>", "text": "<edited reply>"}`.
-A `reply:` answer that carries `text` posts that text, whether or not it
-also carries a note, because the human wrote the exact words. `text` on a
-`fix:` or `skip:` answer changes nothing.
+- **form:** `### Present the in-pane gate form`, holding `code-changes`
+  back from the chunks. Then one last call: `code-changes`, only when some
+  thread answered `fix:` (otherwise submit its sentinel `skip` unasked),
+  plus a pane-only `next` question of **Continue** / **Iterate here** /
+  **Hold**. That `next` never reaches the registry, and Iterate / Hold are
+  never extra options on a thread or code-changes question.
+  - **Continue:** ONE `gate_answer {id, answers, runDb?, stage?}` after
+    that last call, carrying every thread answer plus `code-changes`. A
+    replacement reply typed in the free-text field rides as `note`.
+  - **Iterate here** or **Hold:** answer nothing. Hold leaves the gate
+    open for another surface.
+- **wait:** as gate-protocol draws it; an answer from the board or
+  console carries no `next`: it is the `answered off the pane` edge.
 
-**A dropped context.** When the respond-plan open reports `contextOmitted`,
-its stderr ends "shorten and re-ask": do neither. Never shorten a reply
-and never re-ask to fit. Keep the gate as opened, take its answers as
-given, and count every thread's context as dropped, so every `reply:`
-answer with no `text` is an override. On any resume, a caller-handed
-`{plan}` in a fresh pane included, a report carrying the line
-`gate-1-context: dropped` means the same, whoever opened the gate: a
-caller that owns the gates writes that line into its own report.
+Neither `gate_answer` nor `gate_reconcile` records this review gate:
+`gate_record {..., gateId: <id>}` does. Never fold threads into one
+multi-select: one question per thread stays under the form cap.
+`fix:<threadId>` implies that thread's reply, `skip:<threadId>` means
+neither.
 
 ### Redraft the replies with the respond-plan note
 
 Redraft the replies the note asks about, per the reply rules, into the
-verdict report, then build the open again. The re-ask is a NEW gate
-(gate-protocol's Closed gates, Hold / Iterate), never a second answer to
-the one just closed.
+verdict report, then build the open again: a NEW gate, never a second
+answer to the one just closed.
 
 ### Rewrite the receive-review report rows
 
-**Report rows.** Once gate 1 is answered, rewrite each thread's row of
-the verdict report (the saved report file too, when there is one) in this
-shape, in verdict-table order:
+**Report rows.** Once gate 1 is recorded, rewrite each thread's row of the
+verdict report (the saved report file too, when there is one), in
+verdict-table order:
 
 ```text
 - <threadId> · <file>:<line> · <verdict>, recommended <action> · gate-1: <reply|fix|skip|override> · reply: "<text>"
 ```
 
-| Field | Filled from |
-|---|---|
-| `gate-1` | the verb the developer answered, never the verdict report's recommendation: `reply`, `fix` or `skip`, except that a `reply:` is `override` when its answer carries no `text` and any one of these holds, whoever answered: its gate 1 reply was not verbatim (the card showed a `direction` or no reply); the answer carries a `note`; or its question context never reached the gate, so its draft may never have been shown: you dropped it for the size budget, or the open was whole-open over budget (a `"fits": false` open, one that reported `contextOmitted`, or a report carrying the line `gate-1-context: dropped`), which counts every thread's context as dropped |
-| `reply` | the answer's `text` when it has one, else the verdict report's draft, else `none`; Commit the fix and finalize its Fixed reply rewrites a fixed row's reply and Redraft the override's reply an override's |
+After `gate_record`, write one row per entry of its `rows`, in order, from
+the entry's `threadId`, `file`, `verdict`, `recommended`, `gate1` and
+`reply`. Never work them out yourself: the tool applies the override rule,
+the edited replies and the notes.
+
+On a resume there is no `rows` result: join the record to the stored card
+for each thread (`extra.gate-source.respond-plan`, the question whose
+option values carry that thread id): `file` is the card's label, `verdict`
+its context's `verdict.call`, `recommended` its recommended option's verb;
+`gate-1` is `override` for every thread under the record's `overrides`,
+else that thread's `threads` verb; `reply` is its `texts` entry, else the
+card's `reply.text`, else `none`. With no stored card the card's fields
+read `unknown`, and a `reply` row whose reply would be `none` is an
+override.
+
+**An override** row's reply was never seen word for word (its card showed
+a direction or no reply, its answer carried a note, or its context never
+reached the gate). It is redrafted (folding in the record's `notes` entry)
+and offered at gate 2 beside the finalized fixes, never posted from gate
+1.
 
 Every later posting, a resumed pane's included, reads these rows, never
-the verdict report's recommendation: a `gate-1: reply` row posts its row's reply from
-gate 1; an `override` row, and a `fix` row whose Fixed reply was finalized, are offered
-at gate 2; a `skip` row, and a `fix` row under `code-changes: skip`, post
-nothing. A resume with only the snapshot at hand reads the
-respond-plan record instead: `threads` gives each verb, `texts` the
-edited replies, `overrides` the reply overrides, offered at gate 2
-beside any finalized fix, and `notes` the note to fold into an
-override's redraft, so it never posts a draft an override was meant to
-replace and never redrafts one without its note. A `reply` thread with
-no `texts` entry has no recoverable gate 1 draft there, so count it as
-an override (`gate-1: override`): redraft it and offer it at gate 2
-beside the other overrides, never posting it from gate 1, however
-closely the redraft follows the lost one.
+the recommendation: a `gate-1: reply` row posts its row's reply; an
+`override` row, and a `fix` row whose Fixed reply was finalized, are
+offered at gate 2; a `skip` row, and a `fix` row under `code-changes:
+skip`, post nothing.
 
-A caller-handed `{plan}` in a fresh pane has no verdict report in the
-session. Its rows read each thread's draft from the respond-plan open the
-caller built its gate from, or from the saved verdict report, when the
-caller hands either path. With neither, read the plan as the snapshot-only
-reading above: a `reply` thread with no `texts` entry is an override,
-redrafted and offered at gate 2, never posted from gate 1. When both the
-open and the saved verdict report are handed, the report wins, because it
-carries the `gate-1-context: dropped` line. A row's `<verdict>,
-recommended <action>` fields come from the open's verdict and recommended
-option, else `unknown`. Row order is the plan's `thread-<n>` order.
-
-`code-changes: revise` re-adjudicates: back to Dispatch one fresh-context
-adjudicator over all the review threads, a fresh dispatch with their note
--- never revised in this session, the bias HARD-GATE still applies. A
-handed plan is single-use: once recorded it is spent, and the revised
-verdicts get a new respond-plan open (handed back to a caller that owns
-the gates, asked in the pane on a direct run), never the same plan
-again.
-`code-changes: skip` (the no-fix sentinel) implements nothing: on to the
-row loop, which still redrafts overrides, then gate respond-post. A thread answered `fix:` under `skip` stays
-unimplemented and has no finalized reply, so gate respond-post neither
-offers nor posts it.
+`code-changes: revise` re-adjudicates with a fresh dispatch and their
+note, never in this session (the bias HARD-GATE still applies); a handed
+plan is single-use, so the revised verdicts get a new respond-plan open.
+`code-changes: skip` implements nothing; the row loop still redrafts
+overrides.
 
 ### Implement the thread's fix
 
-Nothing is implemented until `respond-plan` approves it -- not under cover
-of "in a follow-up commit," not while drafting. On `code-changes: approve`,
-implement the `fix:<threadId>` threads one at a time, verifying each with
-the project's tests and checks before the next. A fix row whose commit is
-already on the branch (its row carries `sha`, or the branch log shows that
-thread's fix) is never implemented again, on a resume or anywhere else.
+Nothing is implemented until `code-changes: approve`: not "in a
+follow-up commit", not while drafting. Implement the `fix:<threadId>`
+threads one at a time. A fix whose commit is already on the branch (its
+row carries `sha`, or the branch log shows it) is never implemented
+again.
 
 ### Run the project's tests and checks on the fix
 
-Verify this thread's fix with the project's tests and checks before the
-next thread starts. Domain ship-time gates still apply to these fixes;
-this skill never checks their box. The counter is attempts on this thread.
+Verify this thread's fix before the next thread starts. Domain ship-time
+gates still apply to these fixes; this skill never checks their box. Each
+failed run charges `fix:<threadId>`.
 
 ### Off-script gate: the thread's fix did not converge
 
-Quote the last failing test or check output as the `context`. Propose
-the move: revert this thread's uncommitted attempt and leave the row
-unimplemented, so no Fixed reply is offered and the row posts nothing.
-Ask it per the Off-script gate section.
+Quote the last failing test or check output as the `context`. Propose:
+revert this thread's uncommitted attempt and leave the row unimplemented,
+so no Fixed reply is offered and the row posts nothing.
 
 ### Make the recorded move once for the unconverged fix
 
 Revert this thread's uncommitted attempt, exactly once, and leave its row
-unimplemented (no Fixed reply, nothing posts for it), then go on to the
-next report row.
+unimplemented, then go on to the next row.
 
 ### Commit the fix and finalize its Fixed reply
 
 Commit the fix. Finalize its reply to "Fixed -- `file:line` / what
-changed" and write it over the draft in the thread's report row, with
-` · sha: <short sha>` before its `reply` field. The sha belongs to the
-report row only: the reply posted to the forge is the Fixed text alone,
-never the ` · sha:` field.
-
-A fix whose commit is already on the branch commits nothing again: its
-Fixed reply is written from that commit, and its row gets that commit's
-`sha`.
+changed" and write it over the draft in the thread's row, with ` · sha:
+<short sha>` before its `reply` field; the posted reply is the Fixed text
+alone, never the sha. A fix already committed on the branch commits
+nothing again: its Fixed reply and `sha` come from that commit.
 
 ### Redraft the override's reply
 
-An override's reply was never seen word for word: redraft it now, per the
-reply rules (Draft the verdict table and one reply per thread) as a reply
-with no code change and folding in its answer's note when it has one, and
-write it into its row.
-
-### Posted already: read each thread on the forge
-
-**Posted already.** On any resume, a caller replaying a parked gate's
-answer into a fresh pane or the snapshot alone, read each thread on the
-forge (its full note chain, the `mr_threads` fetch, or `gh` on
-GitHub) before its reply posts or a
-re-asked `respond-post` offers it. A thread that already carries this
-run's reply, a note whose text is the reply due to post or any note by
-the account this run posts as dated after the run's `started_at`, is
-posted: the close no longer waits on it, an offered thread's respond-post
-entry reads `post: true` (a `gate-1: reply` row gets no entry, as ever),
-it is never offered at a re-asked gate, and it is never posted again,
-whatever the snapshot or the report says of it. Only a thread with no
-such note posts or is offered.
-
-This read is made here, after the report rows, every time the graph
-reaches this box: `mr_threads {mrUrl} for the posted-already read` on GitLab, Read the PR's threads with gh for the posted-already test on GitHub. A read made earlier
-in the run, for a redraft or at the start, never stands in for it; its
-result, and only its result, is what the post-site test uses. Write the
-verdict down here, one line per thread, from the notes this read
-returned, before anything is offered or posted: the thread, then
-`posted` (naming the note that shows it) or `not posted`. Each verdict
-comes only from the notes this read returned. When those notes are not
-in front of you (describing the run rather than making it), a thread's
-verdict line gives both outcomes: if it carries this run's reply, it is
-counted posted and nothing posts or is offered for it; if not, it posts
-or is offered. Never a single verdict inferred from thread open times,
-the snapshot or the report. Threads it shows carrying this run's reply
-are counted posted and drop out of every
-post and offer; the rest still post or are offered. With no result (an
-error, or a thread whose notes did not come back), nothing posts and
-nothing is offered: the run holds. No gate answered, so there is no
-`hold:<stage>:<attempt>` decision: set `hold` to `held`, report the
-error verbatim (to the caller when it owns the gates), and leave the run
-open. A resume retries the read.
-
-The ask that follows a respond-post hold, once it lifts, or an iteration,
-once it is applied, is a NEW gate (gate-protocol's Closed gates, Hold /
-Iterate). Read the forge first, then build its open: the report rows
-minus every thread already posted, one whose respond-post record entry
-has `post: true`, or one the forge shows carrying this run's reply. A
-thread that has posted is never offered twice. Name the read even when
-you expect it to find nothing: a pane can post and die before it records.
-
-On a resume or a re-ask, this read alone answers the test at the post
-site, Thread already carries this receive-review run's reply?, one thread
-at a time: from the notes it returned, never from when a thread was
-opened, how old its last note is, the snapshot or the report. Yes counts
-the reply posted and goes on to the thread's resolve decision, never
-posting it again; no posts it. Only a run that was never resumed or re-asked answers no
-without a read, and only for a thread it has not yet tried to post; after
-an `mr_reply_thread` error, re-read that thread before the retry.
-
-### Read the PR's threads with gh for the posted-already test
-
-Read every thread's full note chain with `gh`, fresh, for this test. The
-earlier read of the PR's review threads does not stand in for it.
+Redraft it now per the reply rules, as a reply with no code change,
+folding in its answer's note when it has one, and write it into its row.
 
 ### Build the respond-post open
 
 This gate offers exactly the replies the developer has not yet seen word
 for word: every `gate-1: override` row, and every `gate-1: fix` row whose
-Fixed reply was finalized (Report rows). A `gate-1: reply` row is never
-offered: it posts its row's reply and is never resolved, except as a
-retired-shape `post` decides it (Acting on respond-post, below). A `skip`
-row, and a `fix` row whose Fixed reply was never finalized, post nothing.
-
-- **No thread offered** (no finalized fix and no override) **and no
-  caller-handed `post`**: post the `gate-1: reply` rows now, each one
-  not already carrying this run's reply (Posted already). There is no
-  respond-post gate and no respond-post record: open nothing, record
-  nothing for this scope (the respond-plan record covers those replies),
-  and close only when no thread was held this pass: a forge refusal held
-  here leaves the run open for a resume, which finds the thread through
-  Posted already. A caller that owns the gates gets no open file back, only
-  that nothing is offered and which replies posted.
-- **No thread offered, but the caller handed a `post`** (in a
-  `{plan, post}` object, or on its own): that `post` decides first. Post
-  no `gate-1: reply` row before reading it; act on it as Acting on
-  respond-post says, and record its selection there, a retired-shape
-  `post` unchanged.
-- **Threads offered:** the `gate-1: reply` rows wait, and post once this
-  gate proceeds (Acting on respond-post).
+Fixed reply was finalized. A `gate-1: reply` row is never offered: it
+posts its row's reply, unresolved, once the post side runs. With nothing
+offered there is no respond-post gate and no record; a caller that owns
+the gates gets no open file, only that nothing is offered and which
+replies posted.
 
 <HARD-GATE>
-Decision intake: when the caller's `{plan, post}` object already carries
-`post`, use it and ask nothing here. Otherwise build the open, then hand
-it back or run the gate.
+Decision intake: when a combined `{plan, post}` already carries `post`,
+ask nothing, but still build and store the open with the hand-back
+`gate_open`, then record the `post`: `respond_post_execute` refuses every
+pass without `extra.gate-source.respond-post` on the run.
 
-**Build the open** in the scratch directory Build the open made, as
+**Build the open** in Build the open's scratch directory (a pane that made
+none makes a new one the same way, never `mktemp -d`), as
 `<dir>/respond-post.source.json`:
 
 ```json
@@ -1014,11 +967,10 @@ it back or run the gate.
 ```
 
 ONE multi-select question per offered thread, in verdict-table order,
-plus `next`; a `gate-1: reply` row never gets one. Its question's
-id is `thread-<n>` by 1-based position among the offered threads, its
-label the thread's `file:line`, and its options exactly
-`post:<threadId>` and `resolve:<threadId>`, thread id VERBATIM, bare
-verb as the label.
+plus `next`. Its id is `thread-<n>` by 1-based position among the offered
+threads, its label the thread's `file:line`, its options exactly
+`post:<threadId>` and `resolve:<threadId>`, thread id VERBATIM, bare verb
+as the label.
 
 | Field | Filled from |
 |---|---|
@@ -1028,277 +980,231 @@ verb as the label.
 | gate `replies` | the offered-thread count |
 | gate `fixes` | one entry per commit the fix loop made, the key omitted when there are none |
 
-Post and resolve are independent picks: both, post only, resolve
-without replying, or neither (an explicit empty array). Two options per
-question keeps every thread under the form cap, whatever the count.
+Post and resolve are independent picks: both, post only, resolve without
+replying, or neither (an explicit empty array). Nothing here is trimmable:
+`gate_open` fits the open.
+</HARD-GATE>
 
-- Fit it:
+### respond-post gate_open result?
 
-  ```bash
-  sh "${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh" fit < <dir>/respond-post.source.json > <dir>/respond-post.open.json
-  ```
+As `respond-plan gate_open result?`, with the source stored as
+`extra.gate-source.respond-post`, which `respond_post_execute` checks
+every decision against. Handed back for a combined `{plan, post}`: the
+source is stored (`gate: null`); record the handed `post` (`answers`,
+`decidedBy`). The same STOP holds.
 
-  Nothing here is trimmable (a reply is never shortened), so an open over
-  the budget goes all prose.
+### Fix the respond-post source the gate_open refusal names
 
-### Fix the respond-post source the fit names
-
-Exit 1 names the question and field to fix. The counter is fit attempts
-within this build of the open.
+As for respond-plan, in `<dir>/respond-post.source.json`, then open again
+through `Caller owns the receive-review gates at respond-post?`. A take
+makes the recorded move once, then opens again.
 
 ### Off-script gate: the respond-post open will not fit
 
-Quote the third fit's problem lines as the `context`. Propose, spelled in
-full, one source change for the fields the fit named, never a shortened
-reply or a hand-edited open. The take makes that change, then the fit
-reruns. Ask it per the Off-script gate section.
+As the respond-plan one: the last refusal's lines quoted, one source
+change proposed in full, never a shortened reply or a hand-edited open.
 
-### Make the recorded move once at the respond-post fit
+### Write the run line before the respond-post hand-back
 
-Make the source change the answer recorded, exactly once, then rerun the
-fit. Exit 0 goes on as normal. Exit 1 finds the attempt counter already
-spent and returns to this same off-script gate, where the human answers
-again.
+The same run line, into the handed `--report`, replacing any earlier
+one; with no `--report`, write nothing. A fresh pane the board later hands
+the `{post}` to resumes this run, where the plan decision and both gate
+sources sit.
 
 ### Hand back the offered replies and the respond-post open's path
 
-**A caller that owns the gates**: open nothing. Hand back the offered
-replies plus the absolute path of `<dir>/respond-post.open.json`, then
-wait for its `{post}`. Its `.questions` end with `next`; a caller with its
-own navigation drops that question. Once you have acted on its `{post}`,
-hand back which replies posted, as the no-offer path does.
+**A caller that owns the gates**: open nothing in the pane. Hand back the
+offered replies plus the absolute paths of `<dir>/respond-post.open.json`
+(its source beside it as `respond-post.source.json`) and of this skill's
+vendored `${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh`, then wait for its
+`{post}` (its `.questions` end with `next`, which a caller with its own
+navigation drops). The `{post}` records first, then the post side acts;
+hand back which replies posted.
 
-### Gate respond-post through gate-protocol
+### Gate respond-post: carry the opened gate through gate-protocol
 
-**Otherwise** the verb runs the gate itself. It asks with the
-`gate_ask` tool and answers a pane form with the `gate_answer` tool, per
-gate-protocol's Runs integration; a gate is never asked or answered from
-the shell.
+**Otherwise** the verb runs the gate itself, entering gate-protocol at
+`Trigger: a site opened its gate with gate_open` and walking on from
+`paneAction?`; a gate is never asked or answered from the shell.
 
-- `run_field_set` with `key: "gate"`, `value: "respond-post"`, `stage:
-  <stage>`.
-- Run gate-protocol's Runs integration with kind `respond-post`, the open
-  read from the file: read `<dir>/respond-post.open.json` with the Read
-  tool; call `gate_ask` with its `questions` array, `kind:
-  "respond-post"` and its `context`; act on the returned presentation as
-  gate-protocol says.
+- **form:** `### Present the in-pane gate form`. Here `next` is a question
+  of the open itself (**Proceed**, recommended / **Iterate here** /
+  **Hold**), so it rides in the chunks; never fold it into a thread
+  question. Then ONE `gate_answer {id, answers, runDb?, stage?}` carrying
+  every thread answer plus `next`. The pane's answer never carries `text`:
+  whatever the human types, a full replacement reply included, rides as
+  `note`, and the drafted reply posts.
+- **wait:** as gate-protocol draws it; an answer from the board or console
+  carries the open's `next` and routes the same way.
 
-  `next` carries the navigation verbs -- **Proceed** (recommended) /
-  **Iterate here** / **Hold** -- and never folds into a thread question.
-  A paragraph that lists the replies and waits is not this gate.
-- In-pane form: run
-  `sh "${CLAUDE_SKILL_DIR}/scripts/gate-ctx.sh" prose < <dir>/respond-post.source.json`.
-  Show its `.context` as one line before the form; each thread
-  question's form text is its `label`, a newline, its prose context
-  (`<file> FIX · <sha>: <text>` or `<file> REPLY: <text>`), then `Post,
-  resolve, both, or neither?`, under the header `Thread <n>`, as a
-  multi-select. Ask the thread questions in order, up to four per call,
-  then `next` in one last call, and submit exactly ONE `gate_answer`
-  carrying every thread answer plus `next`. The pane's answer never
-  carries `text`: whatever the human types in the form's free-text
-  field, a full replacement reply included, rides as `note`, and the
-  drafted reply posts. The JSON never reaches the form.
-</HARD-GATE>
+A paragraph that lists the replies and waits is not this gate. Neither
+`gate_answer` nor `gate_reconcile` records it: `gate_record {..., gateId:
+<id>}` does, before the post side, only on a `next` of `proceed`
+(`respond_post_execute` refuses any other), and builds the selection
+itself.
 
 ### Decide nothing at respond-post: no push, post, resolve or record
 
 A `hold` or `iterate` answer decides nothing, whatever its thread picks
-say: nothing pushes, no reply posts, no thread resolves, and no
-respond-post decision is recorded, so every offered thread stays pending
-in the record and the `gate-1: reply` rows keep waiting. A `hold` still
-records the hold itself and sets the `hold` field (Run); neither is a
-respond-post decision.
+say: nothing pushes, posts or resolves, and no respond-post decision is
+recorded (no `gate_record`, no `respond_post_execute`), so every offered
+thread stays pending and the `gate-1: reply` rows keep waiting. The gate
+is still answered with its `next` (one `gate_answer`, unlike respond-plan's
+pane-only `next`), so it closes. A `hold` ends the turn through
+`run_hold`; that is not a respond-post decision.
 
 ### Apply the respond-post note
 
-Redraft what the note asks (an override's reply, per the reply rules) and
-write it into its row. The re-ask is a new gate over the threads not yet
-posted (Posted already).
+Redraft what the note asks (an override's reply, per the reply rules)
+into its row, then build the open again: a NEW gate with its own id, whose
+proceed records with that newest `gateId`. A record against the earlier
+gate is stale and refused.
+
+### respond_post_execute {runDb, tree, stage}
+
+GitLab's whole post side is this one call, `tree` = this checkout's root
+(where the fixes were committed, registered with rt as `git_push` needs).
+It checks both decisions against their gate sources, pushes only when a
+picked thread is a fix row, posts each picked reply and every `gate-1:
+reply` row, resolves the picked threads, and counts what already landed
+(`alreadyPosted`, `alreadyResolved`). It is idempotent, so a resume, a
+take and an iterate all call it again.
+
+### respond_post_execute result?
+
+- **Refused** (nothing moved): a line naming a field, a record or the tree
+  is fixable once; a refusal nothing on this run can mend (no respond-plan
+  decision or gate source, a handed `{post}` in a fresh run) goes straight
+  to its off-script gate, quoted.
+- **`held` empty:** every due reply and resolve is done; clear `hold`,
+  which an earlier pass or the tool may have set and the tool never
+  clears.
+- **A `reply` or `resolve` entry in `held`:** one off-script gate for the
+  batch.
+- **Only `push`, `mismatch` or `read` entries:** report them.
+
+### Fix what the respond_post_execute refusal names
+
+Fix exactly what the refusal names with a move this graph already draws
+(the registered `tree` for a tree mismatch; a respond-post record for a
+scope the run has not recorded), then call again. Never re-record a scope
+the run already recorded, never edit the run by hand. A take makes the
+recorded move once, then calls again.
+
+### Off-script gate: respond_post_execute refused
+
+Quote the refusal whole as the `context`. Propose, spelled in full, the
+move that would let the call act (the record or source it names, a new
+respond-post gate when it asks for an override).
+
+### Off-script gate: the forge refused a reply or resolve
+
+One gate for every reply or resolve the forge refused this pass. Quote each held entry as the `context`: its
+`threadId`, `kind` and `error`, whole and unedited; any `push`, `mismatch`
+or `read` entries ride in the same context and stay held. Propose: the
+human posts or resolves those threads by hand, then this verb calls
+`respond_post_execute` again, which finds them (`alreadyPosted`,
+`alreadyResolved`). Take and iterate both call again; hold needs no
+`run_hold` (the tool set `hold`) and ends with threads held.
+
+### Report the held threads verbatim
+
+Report every `held` entry: its thread, its `kind`, and its `error` whole
+and unedited in a fenced block, never a summary, paraphrase or excerpt.
+Say which replies posted and resolved (`posted`, `alreadyPosted`,
+`resolved`, `alreadyResolved`), in the hand-back when a caller owns the
+gates. A `mismatch` names what HEAD, `@{push}` and `@{u}` printed: never
+switch branches, rebase or push to make them match, even when the error
+names a fix; the developer decides, and a resume calls the tool again.
+The run stays open with `hold` at `held`; no `run_hold`.
+
+### Posted already on GitHub: read every thread with gh
+
+Read every thread's full note chain with `gh`, fresh, every time the graph reaches this box; the earlier thread
+read never stands in for it. A thread that carries this run's reply (a
+note whose text is the reply due, or any note by the account this run
+posts as dated after the run's `started_at`) is posted: it never posts
+again. With no result (an error, or a thread whose notes did not come
+back), nothing posts: set `hold` to `held`, report the error verbatim, and
+leave the run open.
 
 ### Hold the picked fix rows and report the failure verbatim
 
-A failed push (a target mismatch or a push error) holds those rows: post
-and resolve none of them, report the mismatch or the error verbatim (in
-the hand-back when a caller owns the gates), and leave the run open,
-since the close waits for every reply. Never force, rebase or merge past
-it. Every other reply posts as decided either way. Then record the
-respond-post decision at once, with the held thread ids under `"held"`.
-
-Verbatim means the text itself: the error `git_push` returned, or for a
-mismatch the output of the two git reads, whole and unedited, in a fenced
-block. Never a summary, a paraphrase, or an excerpt with parts elided.
-
-The held path ends at the run left open, not at Report the outcome, so
-say it before the turn ends: a caller that owns the gates gets which
-replies posted and which threads are held, with each failure verbatim.
-
-### Hold the thread the forge refused and report the refusal verbatim
-
-A Hold answer at the refused-reply or refused-resolve off-script gate
-holds only that thread, as a failed push holds the fix rows: nothing more
-acts on it this pass. Report the refusal verbatim, the forge's error whole
-and unedited in a fenced block, never a summary, a paraphrase, or an
-excerpt with parts elided (in the hand-back when a caller owns the gates),
-and leave the run open, since the close waits for every reply. Every other thread still acts. The respond-post record lists
-the thread under `"held"` (The respond-post record). With nothing offered
-and no caller-handed `post` there is no respond-post record; a resume
-then finds the unposted thread through Posted already. As with a failed
-push, a caller that owns the gates is told which replies posted and which
-threads are held before the turn ends.
-
-### Off-script gate: the forge refused the reply
-
-Quote the `mr_reply_thread` error from the retry as the `context`. A
-retry, the budgeted one or an iterate answer's, first re-tests the thread
-(Thread already carries this receive-review run's reply?), so a reply
-that landed despite an error never posts twice.
-Propose the move: the human posts this reply by hand, and this run
-counts the reply posted once the forge shows it. A retry after they fix the cause is
-the iterate answer, never the take. A Hold holds this thread only (Hold
-the thread the forge refused and report the refusal verbatim). Ask it per
-the Off-script gate section.
-
-### Make the recorded move once for the refused reply
-
-Read the thread on the forge; once it carries the reply the human posted,
-count the reply posted, exactly once, then go on to this thread's resolve
-pick.
+A failed push (a target mismatch or a push error) holds the picked
+`gate-1: fix` rows: post and resolve none of them, and report the two git
+reads' output or the `git_push` error, whole and unedited, in a fenced
+block. Never force, rebase or merge past it. Every other reply posts as
+decided. Once the threads are done, re-record the decision with the held
+ids (`gate_record {..., held}`) and set `hold` to `held`. That record
+passes `gateId`, the `gate` in `extra.gate-source.respond-post`, when the
+registry still has that gate. Otherwise (a `gate: null` source, or a gate
+the registry no longer returns) it passes `decidedBy` the recorded
+decider and `answers` rebuilt from the recorded decision: per offered
+thread, the `post:<threadId>` and `resolve:<threadId>` values its
+`threads` entry picks, as `{"value": [...], "text": ..., "note": ...}`
+carrying that entry's recorded `text` and `note` (a bare array when it
+has neither). Tell a caller that owns the gates which replies posted and
+which threads are held.
 
 ### Post the reply on GitHub with gh
 
-Post this thread's reply (the text Acting on respond-post names) in the
-thread with `gh`, never as a top-level comment. On other forges posting
-mechanics belong to the forge CLI and the adapter.
-
-### Off-script gate: the forge refused the resolve
-
-Quote the `mr_resolve_thread` error from the retry as the `context`.
-Propose the move: the human resolves this thread by hand, and this run
-counts it resolved once the forge shows it. A retry after they fix the cause is the
-iterate answer, never the take. A Hold holds this thread only (Hold the
-thread the forge refused and report the refusal verbatim). Ask it per the
-Off-script gate section.
-
-### Make the recorded move once for the refused resolve
-
-Read the thread on the forge; once it shows the thread resolved, count it
-resolved, exactly once, then go on to the next thread to act on.
+Post this thread's reply (per Acting per thread on GitHub) in the thread
+with `gh`, never as a top-level comment.
 
 ### Resolve the thread on GitHub with gh
 
-Resolve the thread with `gh`, after its reply when both are picked. On
-other forges resolving belongs to the forge CLI and the adapter.
+Resolve the thread with `gh`, after its reply when both are picked.
 
-### Report the outcome (to the caller when it owns the gates)
+### Report the outcome
 
-Zero unresolved human threads: say so. A caller that owns the gates gets
-which replies posted: with nothing offered, no open file back, only that
-nothing is offered and which replies posted; after acting on its
-`{post}`, which replies posted. When threads are held, the run ends held
-instead, and the two hold sections carry this report.
+Zero unresolved human threads: say so. Otherwise say which replies posted
+and which threads resolved (on GitLab from `posted`, `alreadyPosted`,
+`resolved` and `alreadyResolved`), quoting any `writeErrors`; a caller
+that owns the gates gets the same. Held threads are reported by Report the
+held threads verbatim (GitHub: Hold the picked fix rows and report the
+failure verbatim) instead.
 
 ## What the graph cannot show
 
-**Push before any Fixed reply.** Only when the picks post or resolve at
-least one `gate-1: fix` row; otherwise push nothing. Once respond-post
-proceeds, or a caller hands `post`, and before acting on those rows:
+**Acting on respond-post.** Never a top-level note, never approve the
+change: that stays the developer's, however settled a thread looks.
 
-1. Check the target: `git branch --show-current` must print the MR's
-   source branch (the `branch` recorded at Resolve the change and record
-   its identity, else the forge's), and `git
-   rev-parse --abbrev-ref @{push}` must print that branch on its remote
-   (`origin/<source branch>`). Any other output, an error included, is a
-   failed push; never switch branches to make it match.
-2. Push that one branch with `git_push`, `tree` = this worktree: it
-   pushes only the current branch (the one the check verified) to its
-   same-named upstream by explicit refspec, never a bare push, which can
-   publish other refs under a configured push refspec or a mirror
-   remote. That proceed is the authorization: ask nothing more.
+**Push before any Fixed reply.** On GitHub, and only when the picks post
+or resolve at least one `gate-1: fix` row; otherwise push nothing. Before
+acting on those rows, `git branch --show-current` must print the MR's
+source branch (the recorded `branch`, else the forge's) and `git
+rev-parse --abbrev-ref @{push}` must print `origin/<source branch>`; any
+other output, an error included, is a failed push, and never switch
+branches to make it match. Then `git_push` with `tree` = this worktree
+pushes only the current branch to its same-named upstream. The proceed is
+the authorization: ask nothing more.
 
-**Acting on respond-post.** Act only once respond-post proceeds: its
-`next` answer is `proceed`, or a caller handed `post`, which carries no
-`next`. A `hold` or `iterate` answer decides nothing (Decide nothing at
-respond-post). A thread that already carries this run's reply (Posted
-already) never posts again, whatever its pick or its row says.
-
-On proceed, act per thread, reading each `thread-<n>` answer (a `{value,
-note, text}` object unwraps to its `value`; the note rides the decision
-record and never edits the reply) and splitting each value at the first
-`:` into the verb and the thread id: `post:<threadId>` posts that
-thread's reply, which is the answer's `text` when it carries one and the
-`reply@1` context's `text` otherwise (`text` on a thread with no `post:`
-posts nothing); `resolve:<threadId>` resolves the thread, after its reply
-when both are picked and on its own when only resolve is, where the forge
-distinguishes resolve from reply; an empty array leaves the thread
-untouched. Then post every `gate-1: reply` row that does not already
-carry this run's reply, its row's reply, unresolved: this gate never offers those threads, so they post whatever
-it picked for its own threads. When the open offers such a thread, or an
-answer value names it (an open built before this rule), that thread's
-answer decides it instead, an empty array included, and no reply posts
-twice. Nothing else posts, through any channel. Never a top-level note, never approve the
-change: that stays the developer's, however settled a thread looks once
-its reply is written. On GitLab a reply posts with the `mr_reply_thread`
-tool and a resolve is `mr_resolve_thread`, after its reply when both are
-picked; on other forges posting mechanics belong to the forge CLI and the
-adapter. A caller-handed `post` in the retired shape (a `replies` list, or
-its `replies-1`, `replies-2`, ... chunks read as one union, of bare thread
-ids plus `disposition`) posts the listed replies, resolves them only on
-`resolve-addressed`, and records that selection unchanged. That shape
-offered every thread with a reply, so it decides each `gate-1: reply`
-row fully, as that older gate did: one it lists posts once and is
-resolved only on `resolve-addressed`, and one it omits (an empty list
-included) posts nothing.
-
-**The respond-post record.** At execution time, after acting: `run_decision` with `contract:
-"gate@1"`, `scope: "respond-post"`, `selection:
-{"threads":{"<threadId>":{"post":true,"resolve":false},"...":"one entry per offered thread"}}`,
-`decidedBy: <the answer's by>` (for a caller-handed `post`, the decider
-the caller names). An entry carries `text` only when its
-thread's answer was an object with `text` and `post:`, and then it is the
-answer's: `{"post":true,"resolve":true,"text":"<the answer's text>"}`
-when that answer also carries `resolve:`, `"resolve":false` when it does
-not. A reply posted from the `reply@1` context never adds `text`. An
-entry whose thread's answer carries a note adds it as `note`:
-`{"post":true,"resolve":false,"note":"<the note>"}`. After a failed push,
-or a Hold at a forge-refusal off-script gate, the selection adds
-`"held":["<threadId>"]` beside `threads`, each held offered thread's entry
-still its answer's picks; a held `gate-1: reply` row is listed under
-`"held"` with no entry under `threads`. Every offered
-thread gets an entry, and only offered threads: a `gate-1: reply`
-row's reply rides the respond-plan record. An answer's values name its thread; an empty
-array names none, so take that thread from the question's options in the
-open, or, when the open is not at hand (a caller handed `post` to a
-fresh pane), record every offered thread (a `gate-1: override` row, or
-a `gate-1: fix` row whose Fixed reply was finalized) that no answer value names as both `false`. Never map a
-`thread-<n>` key to a thread by its position.
+**Acting per thread on GitHub.** Walk the offered threads, then the
+`gate-1: reply` rows; a held resume walks only the held threads, and a
+thread held this pass acts on nothing. A `{value, note, text}` answer
+unwraps to its `value` (the note never edits the reply); split each value
+at the first `:`: `post:<threadId>` posts the answer's `text` when it
+carries one, else the `reply@1` context's `text`; `resolve:<threadId>`
+resolves, after the reply when both are picked; an empty array leaves the
+thread untouched. A `gate-1: reply` row posts its row's reply, unresolved.
+Nothing else posts, through any channel.
 
 ## Off-script gate
 
-Every `Off-script gate: ...` box asks this one gate, through
-gate-protocol's Runs integration. Its scope is `off-script:receive-review:<n>`, `n`
-counting from 1 within the stage attempt; its `context` quotes the refusal
-or failure. Ask it with the `gate_ask` tool and submit the answer, a Hold
-included, through the `gate_answer` tool (`id` the gate's id, `answers`
-keyed by question id) before `run_decision` records it, per
-gate-protocol's Acting on the response, so the registry gate never stays
-open.
+Every `Off-script gate: ...` box opens gate-protocol's `## Off-script
+gate` with site `receive-review`: scope `off-script:receive-review:<n>`
+(`n` from 1 within the site's attempt), `context` quoting the refusal or
+failure verbatim, under the run with `runDb` and `stage`. A board that
+owns the receive-review gates does not own these: they open in this pane.
 
-| Question | Options (recommended first) |
-|---|---|
-| `action` | **Take the proposed move** (its value spells the move in full) / **Hand back** |
-| `next` | **Proceed** (Recommended) / **Iterate here** / **Hold** |
-
-Selection: `{"move":"<the move>","why":"<the refusal or failure>","action":"take|handback","next":"proceed|iterate|hold","note":"<their words or null>"}`.
-
-The answer diamond after each box reads it: `action: handback` is hand
-back; otherwise `next` picks, proceed taking the move, iterate redoing
-that site with their note, hold holding (at the two forge-refusal
-sites, that thread only). After an iterate or take answer, the site's
-attempt counter stays spent: the next failure there returns to the same
-off-script gate, where the human answers again. Take makes exactly that move
-once. Hand back is the `run_stage` fail node, with the why as its
-`reason`; when a caller owns the gates, also carry the why in the
-hand-back.
+The answer diamond reads it: `action: handback` is hand back whatever
+`next` says; otherwise proceed takes the proposed move exactly once,
+iterate redoes that site with their note, hold holds. After a take or
+iterate the site's budget stays spent: the next failure returns to the
+same gate. Hand back closes an own run `abandoned` or fails an inherited
+run's stage, with the why as `reason` (also in the hand-back when a caller
+owns the gates). A gate that comes back `closed` is a hold whose reason is
+"gate closed".
 
 *If a rule below asks for a move this graph marks STOP, take the off-script edge instead.*
 
@@ -1313,13 +1219,10 @@ pass its addendum with `{TRIAGE_FLAGS}` (those resolved values) and
 rest verbatim. No depth block here; the addendum informs the per-thread
 verdicts.
 
-**One dispatch, all threads together.** Related comments must be judged with
-shared context; a partial reading produces wrong conclusions and a wrong
-implementation follows it. This batching rule is this skill's own, held
-whatever the slots bind.
-
-Per thread it returns `valid` / `pushback` / `needs-clarification`, plus that
-entry's relations.
+**One dispatch, all threads together**, whatever the slots bind: related
+comments must be judged with shared context, or wrong conclusions and a
+wrong implementation follow. Per thread it returns `valid` / `pushback` /
+`needs-clarification`, plus that entry's relations.
 
 {{include:review-dispatch-body}}
 
@@ -1343,33 +1246,30 @@ entry's relations.
 
 | Thought | Reality |
 |---|---|
-| "I wrote this, I can tell if the reviewer is right" | That is the author bias. Dispatch the fresh-context adjudication (Dispatch one fresh-context adjudicator over all the review threads). |
+| "I wrote this, I can tell if the reviewer is right" | That is the author bias. Dispatch the fresh-context adjudication. |
 | "It's a small comment, I'll just judge it here" | Small own-code judgments are the peak of the bias. Dispatch it. |
 | "I'll run self-review at the end as the check" | Too late. The fresh context adjudicates the comments; it is not a gut-check after. |
-| "I'll open with 'Good call' / 'You're right'" | Performative. State the technical content; no agreement, no thanks. |
-| "I'll process the resolved / bot threads too" | Unresolved human threads only. |
-| "I'll ask both gate questions, the caller already handed `{plan, post}`" | Decision intake first: a caller-handed object answers `respond-plan` and `respond-post` -- ask nothing. |
-| "I'll post the replies since they look right" | Post only what an answer picked: a `gate-1: reply` row, or an offered thread whose answer carries `post:`; resolve only those carrying `resolve:`; never approve for the developer. |
-| "I'll offer the reply-only threads at `respond-post` too, for a last look" | The developer already saw that exact reply. `respond-post` offers only the replies they have not seen word for word: fixed threads and `reply:` overrides with no `text`. |
-| "Gate 2's answer doesn't name the reply-only thread, so it stays unposted" | Gate 1 decided it. It posts once gate 2 proceeds, whatever gate 2 picked for its own threads, unless the open offered it or an answer value names it. |
-| "They answered `reply:`, so the drafted reply posts now" | Only a reply they saw word for word posts from gate 1. A `reply:` with no `text` is an override when its card showed a direction or no reply, its answer carries a note, or its question context never reached the gate: redrafted and offered at `respond-post`. |
-| "The pane showed the prose, so a dropped context does not matter" | The rule holds whoever answered. A `reply:` with no `text` on a thread whose question context never reached the gate is an override. |
-| "The stderr says shorten and re-ask, so I'll trim the replies and open it again" | Never shorten a reply and never re-ask to fit. Take the answers as given; every `reply:` with no `text` is an override. |
-| "I know the contexts were dropped; I'll apply that when the answer comes" | A pane that dies takes that knowledge with it. Write `gate-1-context: dropped` into the saved report right after the open. |
-| "The draft is gone, but I know what it said, so I'll rebuild it and post it from gate 1" | A rebuilt reply is words the developer never saw. From the snapshot alone, a `reply` thread with no `texts` entry is redrafted and offered at `respond-post`. |
-| "It's only a note, so the verbatim draft still posts" | A note on a `reply:` may change the reply, and in the pane form it is the only place a typed replacement can go. Redraft with it and offer the thread at `respond-post`. |
-| "The verdict report recommended a reply here, so it posts" | Posting reads each report row's `gate-1` field, never the recommendation. A `gate-1: skip` row posts nothing. |
-| "The plan record has no slot for the edited reply" | It goes in `texts` beside `threads`, and over the draft in the report's row for that thread. Overrides go in `overrides`, and an override's note in `notes`. |
-| "The gate approved posting, not a push, so the Fixed reply goes up (or I ask first)" | "Fixed" with nothing on the remote is false. The proceed authorizes the push: check the branch and `@{push}`, push first, and a mismatch or failed push holds every picked `gate-1: fix` row. |
-| "A plain push from the shell pushes the MR" | It pushes whatever branch is checked out, to its own destination, and any configured push refspec or mirror refs with it. Check both against the MR's source branch, then push that one branch: `git_push` with `tree` = this worktree, never forced. |
-| "The fix is held, so I'll record respond-post once it posts" | A resume from the snapshot would re-offer the replies that already posted. Record now, with the fix threads under `"held"`. |
-| "They ticked post before choosing Iterate (or Hold), so those picks act now" | Only `proceed` acts. On `hold` or `iterate` nothing pushes, posts, resolves or records, whatever the picks; every offered thread stays pending, and the re-ask is a new gate over the threads not yet posted. |
-| "The snapshot has no respond-post record, so nothing has posted yet" | A pane can post and die before it records. On a resume, read each thread on the forge before its reply posts or a re-asked gate offers it: one carrying this run's reply (the same text, or a note by this run's account since `started_at`) is posted, counted as posted, never posted or offered again. |
-| "This one is clearly right, I'll add the guard in a follow-up commit" | Implementation follows `respond-plan`'s `code-changes: approve`, not a line in the draft. |
+| "I'll open with 'Good call' / 'You're right'" | Performative. State the technical content. |
+| "I'll process the resolved / bot threads too" | Unresolved human threads only; never filter the `mr_threads` result again or add a dropped thread back. |
+| "The caller already handed `{plan, post}`, but I'll ask both gates" | A handed object answers both gates; ask nothing. |
+| "I'll post the replies since they look right" | Post only what an answer picked; resolve only `resolve:`; never approve. |
+| "I'll offer the reply-only threads at `respond-post` too, for a last look" | The developer already saw that exact reply. Only fixed threads and overrides are offered. |
+| "I know the contexts were dropped; I'll apply that when the answer comes" | A pane that dies takes that with it. Write `gate-1-context: dropped` into the saved report right after the open. |
+| "I'll work out the overrides and texts from the answers myself" | `gate_record` computes them. Write its `rows` as they come back. |
+| "The resumed run lost its rows, so I'll record respond-plan again" | Never re-record a recorded scope: it moves `decided_at`. Join the decision to the stored cards. |
+| "The run already records respond-plan (a revise), so the handed plan is spent and the record wins" | The revise answered the earlier open. A plan handed after it answers the newer open: record it once and walk its rows. |
+| "The verdict report recommended a reply here, so it posts" | Posting reads each row's `gate-1` field, never the recommendation. |
+| "The gate approved posting, not a push, so I'll ask before pushing" | The proceed authorizes the push. |
+| "The fix is held on a branch mismatch; I'll switch branches, or push from the shell" | Never. Report it verbatim; the run stays open. Only `respond_post_execute` (GitLab) or `git_push` (GitHub) pushes, never forced. |
+| "The forge refused one reply, so I'll post it myself with `mr_reply_thread`" | The tool already retried it. Open the one off-script gate; take and iterate call `respond_post_execute` again. |
+| "They ticked post before choosing Iterate (or Hold), so those picks act now" | Only `proceed` acts. |
+| "The run already records respond-post with nothing held, so it posted; I'll close" | A pane can record and die before it posts. Run the post side again. |
+| "This one is clearly right, I'll add the guard in a follow-up commit" | Implementation follows `code-changes: approve`. |
 | "It's wrong, but I need the reviewer to point me at it" | Then it is `needs-clarification`, not `pushback`. |
-| "The pane is fresh, so I'll adjudicate again before applying the handed plan" | A handed plan answers an adjudication the human already saw. Record it and execute it; a fresh adjudication would change the drafts it approved. Read the threads only for what execution needs. |
-| "The caller asked the respond-plan gate, so it records the decision" | This verb records it: a handed `{plan}` gets the same `run_decision` as a pane answer, `decidedBy` the decider the caller names. A resume reads that record. |
-| "I'll present the table and ask about fixes and posting in the same breath" | `respond-plan` and `respond-post` are two gates, in order. Prose that asks both at once is neither. |
+| "The pane is fresh, so I'll adjudicate again before applying the handed plan" | A handed plan answers an adjudication the human already saw. Record it and execute it. |
+| "The run stores no respond-plan source, so I'll record the handed plan bare" | Build and store the open with the hand-back `gate_open`, then record. |
+| "The caller asked the respond-plan gate, so it records the decision" | This verb records it with `gate_record`. |
+| "I'll present the table and ask about fixes and posting in the same breath" | `respond-plan` and `respond-post` are two gates, in order. |
 
 ## Gate protocol
 
