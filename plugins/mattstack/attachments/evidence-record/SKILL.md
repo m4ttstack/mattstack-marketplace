@@ -10,8 +10,8 @@ what may leave the machine. `evidence_record` writes it; `evidence_attach`
 uploads from it and writes the MR's evidence section. Never write
 `evidence` with `run_field_set`, upload evidence with `mr_upload`, or edit
 the evidence section by hand. A `<slug> spent?` diamond is yes when the
-`run_budget` before it returns `spent` > `limit` (read `spent` against
-`limit`; ignore `exhausted` and `remaining`).
+`run_budget` before it returns `exhausted: true` (`spent >= limit`: the count that
+reaches `limit` takes yes).
 
 ## The record
 
@@ -23,7 +23,7 @@ the evidence section by hand. A `<slug> spent?` diamond is yes when the
   board proves) or waived (its own reason, or its case's, which covers only
   the images the case holds when written). One board may be the
   `annotated` of several images: a pair board covers its case's before and
-  after.
+  after, except a before whose board is an import board, which keeps it.
 - `transcript` (a text file, never uploaded or waived) and `url` (where
   the ticket shows the broken state) are run-level; a run with no image
   is recorded the same way.
@@ -41,11 +41,11 @@ digraph record_evidence {
     record_evidence [label="Record the evidence (evidence-record)" shape=ellipse];
     evidence_record [label="evidence_record {runDb, stage, tree: <worktree>, images, cases?, transcript?, url?}" shape=plaintext];
     record_result [label="evidence_record result?" shape=diamond];
-    run_budget_cover [label="run_budget {runDb, key: evidence:cover-rounds, limit: 3, stage}" shape=plaintext];
+    run_budget_cover [label="run_budget {runDb, key: evidence:cover-rounds, limit: 4, stage}" shape=plaintext];
     cover_rounds_spent [label="cover-rounds spent?" shape=diamond];
     annotate_or_waive [label="Annotate or waive each image the record does not yet cover (evidence-record)" shape=box];
     annotate_outcome [label="Annotate or waive outcome?" shape=diamond];
-    run_budget_retries [label="run_budget {runDb, key: evidence:record-retries, limit: 1, stage}" shape=plaintext];
+    run_budget_retries [label="run_budget {runDb, key: evidence:record-retries, limit: 2, stage}" shape=plaintext];
     record_retries_spent [label="record-retries spent?" shape=diamond];
     recorded [label="Recorded" shape=doublecircle style=filled fillcolor=lightgreen];
     record_held [label="Record held" shape=doublecircle];
@@ -59,7 +59,7 @@ digraph record_evidence {
     run_budget_cover -> cover_rounds_spent;
     cover_rounds_spent -> annotate_or_waive [label="no"];
     annotate_or_waive -> annotate_outcome;
-    annotate_outcome -> evidence_record [label="Ready: each image `uncovered` lists, by its path there, with its cover and a new case's label"];
+    annotate_outcome -> evidence_record [label="Ready: each image `uncovered` lists, by its path there, with its cover, source: ticket on a ticket image, and a new case's label"];
     annotate_outcome -> record_held [label="Waiver held, or Redaction held"];
     annotate_outcome -> record_failed [label="Waiver openings spent"];
     run_budget_retries -> record_retries_spent;
@@ -70,14 +70,19 @@ digraph record_evidence {
 
 The first call names each capture by the `path` it was written to, with
 `case` and `slot` (and `theme`), and `source: "ticket"` on a saved ticket
-image; a recapture is a new `path`, and only a recapture clears that mark. Every later
-call names the same images by the paths in the last returned `value`,
-each with its cover: `annotated` (the board's path) plus `caption`, or
-`waiver` (a case waiver rides in `cases`). The call that first writes a
-new case carries its `label`, on the image or in `cases`, so every call
-until the record is written carries each new case's `label`. `tree` is
-the run's worktree root. Record held is the verb's hold path; Record
-failed fails the verb, naming the images or quoting the error.
+image. Every later call names the same images by the paths in the last
+returned `value`, each with:
+
+- its cover: `annotated` (the board's path) plus `caption`, or `waiver`
+  (a case waiver rides in `cases`);
+- `source: "ticket"` again on every image whose entry in that `value`
+  carries `"source": "ticket"`.
+
+The call that first writes a new case carries its `label`, on the image or
+in `cases`, so every call until the record is written carries each new
+case's `label`. `tree` is the run's worktree root. Record held is the
+verb's hold path; Record failed fails the verb, naming the images or
+quoting the error.
 
 ## Annotate or waive each image the record does not yet cover
 
@@ -93,10 +98,10 @@ digraph annotate_or_waive {
     compose_board [label="Compose the board (browser-evidence)" shape=box];
     drawn [label="Compose outcome?" shape=diamond];
     redaction_held [label="Redaction held" shape=doublecircle];
-    run_budget_draw [label="run_budget {runDb, key: evidence:draw-failures:<case>/<slot>[/<theme>], limit: 1, stage}" shape=plaintext];
+    run_budget_draw [label="run_budget {runDb, key: evidence:draw-failures:<case>/<slot>[/<theme>], limit: 2, stage}" shape=plaintext];
     draw_failures_spent [label="draw-failures spent?" shape=diamond];
     write_caption [label="Write the caption" shape=box];
-    run_budget_waiver [label="run_budget {runDb, key: evidence:waiver-openings:<case>/<slot>[/<theme>], limit: 2, stage}" shape=plaintext];
+    run_budget_waiver [label="run_budget {runDb, key: evidence:waiver-openings:<case>/<slot>[/<theme>], limit: 3, stage}" shape=plaintext];
     waiver_openings_spent [label="waiver-openings spent?" shape=diamond];
     gate_evidence_waiver [label="Gate evidence-waiver (below)" shape=box];
     waiver_answer [label="waiver answer?" shape=diamond];
@@ -171,7 +176,9 @@ Selection: `{"waivers":{"<case>/<slot>[/<theme>]":"<reason>|annotate","<case>":"
 
 ## Attach the evidence
 
-Entered only after the verb's attach gate proceeds. The domain supplies `heading`, `before` and
+Entered only after the verb's attach gate proceeds. On GitLab, nothing
+uploads until the human has looked at every file the upload carries
+(Gate evidence-boards). The domain supplies `heading`, `before` and
 `appendix`; unbound, `heading` is the repo MR template's evidence
 heading, else `## Evidence`, always the full line with its `##`. On
 GitHub nothing uploads; `<n>` is the PR number in `mrUrl`. Attach held is
@@ -183,6 +190,13 @@ refused files.
 digraph attach_evidence {
     attach_evidence [label="Attach the evidence (evidence-record)" shape=ellipse];
     forge_host [label="Forge host?" shape=diamond];
+    run_budget_boards [label="run_budget {runDb, key: evidence:boards-openings:<first file of this opening>, limit: 3, stage}" shape=plaintext];
+    boards_openings_spent [label="boards-openings spent?" shape=diamond];
+    gate_evidence_boards [label="Gate evidence-boards (below)" shape=box];
+    boards_answer [label="boards answer?" shape=diamond];
+    files_left [label="Files left to show in this attach?" shape=diamond];
+    revise_named_boards [label="Revise each board they name (browser-evidence)" shape=box];
+    boards_revision_outcome [label="Board revision outcome?" shape=diamond];
     evidence_attach [label="evidence_attach {runDb, stage, heading, before?, appendix?, mrUrl}" shape=plaintext];
     attach_result [label="evidence_attach result?" shape=diamond];
     stop_move_refused_file [label="STOP: only the human moves a refused file" shape=octagon style=filled fillcolor=red fontcolor=white];
@@ -190,12 +204,12 @@ digraph attach_evidence {
     upload_answer [label="upload off-script answer?" shape=diamond];
     evidence_attach_link [label="evidence_attach {runDb, stage, heading, before?, appendix?, mrUrl, linkRefused: true}" shape=plaintext];
     link_written [label="Linked description written?" shape=diamond];
-    run_budget_upload [label="run_budget {runDb, key: evidence:upload-off-script, limit: 1, stage}" shape=plaintext];
+    run_budget_upload [label="run_budget {runDb, key: evidence:upload-off-script, limit: 2, stage}" shape=plaintext];
     upload_off_script_spent [label="upload-off-script spent?" shape=diamond];
     needs_rerecord [label="Iterate needs a re-record?" shape=diamond];
     rerecord_images [label="Re-record the images through Record the evidence" shape=box];
     rerecord_outcome [label="Re-record outcome?" shape=diamond];
-    run_budget_repair [label="run_budget {runDb, key: evidence:redaction-repairs:<stem>, limit: 1, stage}" shape=plaintext];
+    run_budget_repair [label="run_budget {runDb, key: evidence:redaction-repairs:<stem>, limit: 2, stage}" shape=plaintext];
     repairs_spent [label="redaction-repairs spent?" shape=diamond];
     repair_board [label="Repair the board's redaction record (browser-evidence)" shape=box];
     repair_outcome [label="Repair outcome?" shape=diamond];
@@ -209,7 +223,20 @@ digraph attach_evidence {
     attach_failed [label="Attach failed" shape=doublecircle];
 
     attach_evidence -> forge_host;
-    forge_host -> evidence_attach [label="GitLab"];
+    forge_host -> run_budget_boards [label="GitLab: the first 12 files"];
+    run_budget_boards -> boards_openings_spent;
+    boards_openings_spent -> gate_evidence_boards [label="no"];
+    boards_openings_spent -> attach_held [label="yes: nothing uploaded"];
+    gate_evidence_boards -> boards_answer;
+    boards_answer -> files_left [label="proceed + clear"];
+    files_left -> run_budget_boards [label="yes: the next 12"];
+    files_left -> evidence_attach [label="no: every file shown and answered clear"];
+    boards_answer -> revise_named_boards [label="proceed + hide, or their words"];
+    boards_answer -> attach_held [label="hold"];
+    revise_named_boards -> boards_revision_outcome;
+    boards_revision_outcome -> run_budget_boards [label="Recorded, or no board named: again from the first file"];
+    boards_revision_outcome -> attach_held [label="Held at evidence-redaction, or Record held"];
+    boards_revision_outcome -> attach_failed [label="Not revised: the failure quoted"];
     forge_host -> gh_pr_view [label="GitHub"];
     evidence_attach -> attach_result;
     attach_result -> attached [label="descriptionWritten, or notWritten: unchanged"];
@@ -219,7 +246,7 @@ digraph attach_evidence {
     repairs_spent -> repair_board [label="no"];
     repairs_spent -> stop_move_refused_file [label="yes: refused again after a repair"];
     repair_board -> repair_outcome;
-    repair_outcome -> evidence_attach [label="Repaired"];
+    repair_outcome -> run_budget_boards [label="Repaired: again from the first file"];
     repair_outcome -> attach_held [label="Held at evidence-redaction"];
     repair_outcome -> stop_move_refused_file [label="Not repaired, the output quoted"];
     attach_result -> stop_move_refused_file [label="tempted to copy the file or upload another way"];
@@ -236,7 +263,7 @@ digraph attach_evidence {
     needs_rerecord -> rerecord_images [label="yes: size, bytes or missing (a recapture), a new file, or a record or raw-capture refusal"];
     needs_rerecord -> evidence_attach [label="no: timedOutTwice, the human checked the daemon"];
     rerecord_images -> rerecord_outcome;
-    rerecord_outcome -> evidence_attach [label="Recorded"];
+    rerecord_outcome -> run_budget_boards [label="Recorded: again from the first file"];
     rerecord_outcome -> attach_held [label="Record held"];
     rerecord_outcome -> attach_failed [label="Record failed"];
     gh_pr_view -> evidence_attach_body -> description_returned;
@@ -247,6 +274,55 @@ digraph attach_evidence {
     upload_off_script_spent -> attach_failed [label="yes"];
 }
 ```
+
+### Files left to show in this attach?
+
+Every attach shows every file the upload carries, 12 to an opening, in the
+record's case order: each distinct `annotated` board and each waived
+image's own `path`. A file an earlier gate showed (the verb's attach gate,
+a redaction gate, an earlier attach) is shown again: only an answer given
+while looking at these exact files lets them go up. Yes while files after
+this opening's are left; when you cannot tell which openings were answered
+(a compaction, a resume), start again from the first file.
+
+### Gate evidence-boards (below)
+
+Scope `evidence-boards:<stage>:<n>`, `<n>` counting this gate's openings
+in this stage pass from 1. Open it with `gate_open` (gate-protocol,
+Structured context): the source's `context` is a `boards@1` object.
+
+- `summary`: one sentence naming the MR and how many files go up.
+- `boards`: this opening's 12 files (Files left to show in this attach?).
+  `case` and `slot` are
+  the image's (a pair board's slot is `after`); `theme` when the image has
+  one; `path` the absolute path in `value`; `caption` the image's caption,
+  or `Waived: <its waiver>` for a waived capture, which goes up as shot.
+
+`gate_open` refuses a `boards@1` source with more than 12 boards. Each
+opening's budget is keyed by its first file's name, so a long upload's
+later openings are not charged to the first.
+
+| Question | Options | Shown when |
+|---|---|---|
+| `boards` (write-in) | **Nothing here should stay private** / **Hide something first**, with free text naming the board and what shows | always |
+| `next` | **Proceed** / **Hold** | always |
+
+No option is recommended: whether a file may go public is the human's
+call, made by looking at it. Selection: `{"boards":"clear|hide|<their words>","next":"proceed|hold","note":"<their words or null>"}`.
+
+### Revise each board they name (browser-evidence)
+
+For each board their words (or the note beside **Hide something first**)
+name, walk browser-evidence's Revise a board steps 1 to 6, adding a
+`redact` mark over what they name; step 3's `revisions` entry has their
+words as `asked`. A waived capture they name goes back through `Record the
+evidence` with no waiver, so its annotate pass draws a board that hides
+what they name. Recorded reopens this gate with the new files. Words that
+name no board reopen it too, the context asking which board. A Hold at the
+redaction gate or Record held is Held at evidence-redaction; no spec
+beside the board, a compose error, a refused confirm, a confirm that left
+an empty record unconfirmed, spent redaction rounds or openings, or Record
+failed is Not revised.
 
 ### Off-script gate: upload refused
 
@@ -263,11 +339,14 @@ a board steps 1 to 6 on that board with no wording change (step 3's
 `revisions` entry: `asked` is the refusal quoted, `changed` is
 "re-rendered and re-confirmed"): they re-render
 it, pass Gate evidence-redaction, confirm after a yes and record the new
-bundle. Recorded is Repaired; a Hold at the gate, or Record held, is
+bundle. Recorded is Repaired, and a repaired board is new bytes: Gate
+evidence-boards shows every file again from the first opening before the
+next `evidence_attach`. A Hold at the gate, or Record held, is
 Held at evidence-redaction, with nothing uploaded; no spec beside the
-board, a compose error, a refused confirm, spent redaction rounds, or
-Record failed is Not repaired. When the result also refuses files in
-other buckets, repair the redaction boards first and attach again; the
+board, a compose error, a refused confirm, a confirm that left an empty
+record unconfirmed, spent redaction rounds or openings, or Record failed
+is Not repaired. When the result also refuses files in
+other buckets, repair the redaction boards first, then show the files and attach again; the
 other buckets reach the off-script gate on that next result. An `import` refusal (an imported original is in the record as
 uploadable) goes to the off-script gate with every other bucket.
 

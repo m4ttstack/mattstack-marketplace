@@ -13,7 +13,8 @@ and for a gated board its redaction record and crops) under one stem in
 `~/.fast-browser/screenshots/`, and `evidence_record` copies the whole
 bundle into the run's evidence folder, so any later session re-renders it
 without a browser. A `<slug> spent?` diamond is yes when the `run_budget`
-before it returns `spent` > `limit`.
+before it returns `exhausted: true` (`spent >= limit`: the count that
+reaches `limit` takes yes).
 
 A case enters this page only when the domain's fill picks a browser
 screenshot for it, or when evidence-record composes a board over any other
@@ -45,7 +46,7 @@ digraph browser_evidence {
     get_ready [label="Get ready" shape=box];
     fast_browser_doctor [label="fast-browser doctor" shape=plaintext];
     doctor_green [label="Doctor green?" shape=diamond];
-    run_budget_doctor [label="run_budget {runDb, key: evidence:doctor-reds, limit: 1, stage}" shape=plaintext];
+    run_budget_doctor [label="run_budget {runDb, key: evidence:doctor-reds, limit: 2, stage}" shape=plaintext];
     doctor_reds_spent [label="doctor-reds spent?" shape=diamond];
     fix_doctor [label="Fix what the doctor reports" shape=box];
     fast_browser_compose_help [label="fast-browser compose --help" shape=plaintext];
@@ -54,26 +55,27 @@ digraph browser_evidence {
     agent_driver [label="Agent {subagent_type: fast-browser:browser-driver, model: sonnet, effort: medium, prompt: <the briefs>}" shape=plaintext];
     driver_result [label="Driver result?" shape=diamond];
     stop_draw_yourself [label="STOP: the driver captures and composes; never drive the browser, draw or place marks yourself" shape=octagon style=filled fillcolor=red fontcolor=white];
-    run_budget_sign_in [label="run_budget {runDb, key: evidence:sign-in-asks, limit: 2, stage}" shape=plaintext];
+    run_budget_sign_in [label="run_budget {runDb, key: evidence:sign-in-asks, limit: 3, stage}" shape=plaintext];
     sign_in_asks_spent [label="sign-in-asks spent?" shape=diamond];
     stop_credential [label="STOP: never type or ask for a credential; only a saved login" shape=octagon style=filled fillcolor=red fontcolor=white];
     ask_sign_in [label="Ask the developer to sign in" shape=box];
     sign_in_answer [label="Sign-in answer?" shape=diamond];
     read_board [label="Read the board yourself" shape=box];
     reads_right [label="Reads right?" shape=diamond];
-    run_budget_rerender [label="run_budget {runDb, key: evidence:rerenders:<stem>, limit: 2, stage}" shape=plaintext];
+    run_budget_rerender [label="run_budget {runDb, key: evidence:rerenders:<stem>, limit: 3, stage}" shape=plaintext];
     rerenders_spent [label="rerenders spent?" shape=diamond];
-    crops_listed [label="Crops listed?" shape=diamond];
+    redaction_record [label="Redaction record?" shape=diamond];
     stop_self_confirm [label="STOP: confirming is the human's answer, never the agent's" shape=octagon style=filled fillcolor=red fontcolor=white];
-    run_budget_redaction_gate [label="run_budget {runDb, key: evidence:redaction-openings:<stem>, limit: 3, stage}" shape=plaintext];
+    run_budget_redaction_gate [label="run_budget {runDb, key: evidence:redaction-openings:<stem>:<first crop of this opening, or board for an empty record>, limit: 4, stage}" shape=plaintext];
     redaction_openings_spent [label="redaction-openings spent?" shape=diamond];
     gate_evidence_redaction [label="Gate evidence-redaction (below)" shape=box];
     redaction_answer [label="Redaction answer?" shape=diamond];
+    crops_left [label="Crops left for this board?" shape=diamond];
     fast_browser_confirm [label="fast-browser compose --confirm ~/.fast-browser/screenshots/<stem>.spec.json" shape=plaintext];
     confirm_result [label="Confirm result?" shape=diamond];
-    run_budget_confirm [label="run_budget {runDb, key: evidence:confirm-refusals:<stem>, limit: 1, stage}" shape=plaintext];
+    run_budget_confirm [label="run_budget {runDb, key: evidence:confirm-refusals:<stem>, limit: 2, stage}" shape=plaintext];
     confirm_refusals_spent [label="confirm-refusals spent?" shape=diamond];
-    run_budget_redaction [label="run_budget {runDb, key: evidence:redaction-rounds:<stem>, limit: 2, stage}" shape=plaintext];
+    run_budget_redaction [label="run_budget {runDb, key: evidence:redaction-rounds:<stem>, limit: 3, stage}" shape=plaintext];
     redaction_rounds_spent [label="redaction-rounds spent?" shape=diamond];
     board_ready [label="Board ready" shape=doublecircle style=filled fillcolor=lightgreen];
     not_drawn [label="Not drawn" shape=doublecircle];
@@ -108,24 +110,28 @@ digraph browser_evidence {
     sign_in_answer -> agent_driver [label="Logged in, retry"];
     sign_in_answer -> not_drawn [label="Leave it uncaptured"];
     read_board -> reads_right;
-    reads_right -> crops_listed [label="yes"];
+    reads_right -> redaction_record [label="yes"];
     reads_right -> run_budget_rerender [label="no"];
     run_budget_rerender -> rerenders_spent;
     rerenders_spent -> agent_driver [label="no: the brief and what reads wrong"];
     rerenders_spent -> not_drawn [label="yes"];
-    crops_listed -> run_budget_redaction_gate [label="yes: <stem>.redactions.json lists a crop"];
-    crops_listed -> board_ready [label="no: no record, or a record with no crop"];
-    crops_listed -> stop_self_confirm [label="tempted to run --confirm without a yes"];
+    redaction_record -> run_budget_redaction_gate [label="crops: <stem>.redactions.json lists a crop"];
+    redaction_record -> run_budget_redaction_gate [label="empty: its redactions is []"];
+    redaction_record -> board_ready [label="none: no <stem>.redactions.json"];
+    redaction_record -> stop_self_confirm [label="tempted to run --confirm without a yes"];
     stop_self_confirm -> run_budget_redaction_gate;
     run_budget_redaction_gate -> redaction_openings_spent;
     redaction_openings_spent -> gate_evidence_redaction [label="no"];
     redaction_openings_spent -> not_drawn [label="yes: redaction openings spent"];
     gate_evidence_redaction -> redaction_answer;
-    redaction_answer -> fast_browser_confirm [label="proceed: confirm"];
-    redaction_answer -> run_budget_redaction [label="proceed: widen it"];
+    redaction_answer -> crops_left [label="proceed: confirm"];
+    crops_left -> run_budget_redaction_gate [label="yes: the next 11 crops"];
+    crops_left -> fast_browser_confirm [label="no: every opening of this board confirmed"];
+    redaction_answer -> run_budget_redaction [label="proceed: widen it, or hide something"];
     redaction_answer -> held_redaction [label="hold"];
     fast_browser_confirm -> confirm_result;
     confirm_result -> board_ready [label="ok"];
+    confirm_result -> not_drawn [label="clean exit, but an empty record still not confirmed: the output quoted, update Fast Browser"];
     confirm_result -> run_budget_confirm [label="refused"];
     run_budget_confirm -> confirm_refusals_spent;
     confirm_refusals_spent -> run_budget_redaction [label="no: re-render with the refusal quoted"];
@@ -146,7 +152,8 @@ records it (Record the board, below). `Not drawn` returns with the reason;
 it is never a board drawn by hand. No retry can fix these reasons: the
 developer left it uncaptured, the doctor stayed red, no compose on PATH,
 the sign-in asks were spent, no driver to spawn, redaction rounds or
-openings spent, or confirm refused twice. A failed brief (the driver's
+openings spent, confirm refused twice, or a confirm that left an empty
+record unconfirmed. A failed brief (the driver's
 other failures) or spent re-renders may draw on a retry. `Held at
 evidence-redaction` is the verb's hold path.
 
@@ -265,26 +272,57 @@ A wrong view (a blank page, the change missing from the page) is a Reach
 the view problem: apply that block's fixes, then re-render. At most two
 re-renders per board (`rerenders:<stem>`).
 
-`Crops listed?` reads the record compose wrote,
+`Redaction record?` reads the record compose wrote,
 `~/.fast-browser/screenshots/<stem>.redactions.json`, never the driver's
-`crops` list: yes when that record lists one or more crops, no when there
-is no record or its `redactions` is empty. An empty record (compose may
-warn that a redact mark lies outside the board) means that mark hides
-nothing that shows: the board has no crop to confirm, and the record stays
-in the bundle as is. The upload accepts an empty record whose board hash
-matches.
+`crops` list: crops when that record lists one or more crops, empty when
+its `redactions` is `[]`, none when there is no record. An empty record
+(compose may warn that a redact mark lies outside the board) has no crop,
+and the upload refuses it until `fast-browser compose --confirm` marks it
+confirmed, so it takes the redaction gate like a record with crops: the
+human looks at the board itself and confirms nothing on it needs hiding.
 
 ## Gate evidence-redaction (below)
 
 Scope `evidence-redaction:<stage>:<n>`, where `<n>` counts this gate's
-openings in this stage pass from 1; `redaction-openings:<stem>` budgets
-the openings per board. One sentence above the form names each board's
-crop paths (absolute) and asks the human to open each crop and check that
-no hidden letter or digit is readable.
+openings in this stage pass from 1;
+`redaction-openings:<stem>:<first crop of this opening>` (`board` in
+place of the crop for a board with an empty record) budgets the
+openings of each board's run of crops, so splitting a board's crops never
+spends the allowance its widen rounds need. Open it with `gate_open` (gate-protocol,
+Structured context): the source's `context` is a `boards@1` object, so the
+human sees the whole board, not only its crops.
+
+- `summary`: one sentence asking the human to look at each board and each
+  of its crops, and check that no hidden letter or digit is readable; for
+  a board with an empty record, that no personal detail on it is
+  readable.
+- `boards`: for each board with crops, the board itself, then each crop
+  `<stem>.redactions.json` lists; for a board with an empty record, the
+  board alone. Every entry's `path` is absolute (the home directory
+  written out, never `~`) and its `case` is the brief's case. The board's `slot` is its stem's `before` or `after`, its `theme`
+  the stem's when it has one, and its `caption` the brief's claim; each
+  crop's `slot` is `crop` and its `caption` names the crop and its board
+  (`Crop 1 of the badge board`).
+- At most 12 entries per opening: when the boards and their crops pass 12,
+  open one board (and its crops) per opening. A board with more than 11
+  crops spreads them over consecutive openings, the board first in each
+  with the next 11 crops, until every crop has been shown (Crops left for
+  this board?); the confirm waits until every one of those openings is
+  answered.
+
+### Crops left for this board?
+
+Yes while this board has crops after the ones the last opening showed:
+open the next opening with the board first and the next 11 crops. No once
+every crop has been in an opening answered confirmed, and at once for a
+board with an empty record; only then does
+`fast-browser compose --confirm` run. A widen in any opening re-renders the
+board, and the new render starts again from its first crop.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
 | `redaction-<case>` | **Confirmed: nothing hidden is readable (Recommended)** / **Widen it**, with free text naming the crop and what shows | per board with crops |
+| `redaction-<case>` | **Confirmed: nothing needs hiding (Recommended)** / **Hide something**, with free text naming what shows | per board with an empty record |
 | `next` | **Proceed** / **Hold** | always |
 
 Selection: `{"redactions":{"<case>":"confirm|<their words>"},"next":"proceed|hold","note":"<their words or null>"}`.
@@ -292,13 +330,17 @@ Selection: `{"redactions":{"<case>":"confirm|<their words>"},"next":"proceed|hol
 - Confirm runs `fast-browser compose --confirm` on Bash on the spec that
   rendered the board, `~/.fast-browser/screenshots/<stem>.spec.json`, and
   only a board that passed it is recorded.
-- `Confirm result?`: a confirm that exits clean is ok. The first refusal
-  for a board re-renders it through the driver with the refusal quoted,
-  counted against `redaction-rounds:<stem>`; a second refusal for the
-  same board is not drawn, with the output quoted.
-- Widen re-renders, and the new render opens this gate again.
-- Every render of a gated board that a verb records, during a run or in
-  a revision, passes this gate first.
+- `Confirm result?`: a confirm that exits clean is ok, except on an empty
+  record that still lacks a top-level `"confirmed": true` afterwards (Fast
+  Browser before 0.1.16 exits clean without confirming it): that board is
+  not drawn, with the output quoted and the advice to update Fast
+  Browser. The first refusal for a board re-renders it through the driver
+  with the refusal quoted, counted against `redaction-rounds:<stem>`; a
+  second refusal for the same board is not drawn, with the output quoted.
+- Widen and Hide something re-render, and the new render opens this gate
+  again.
+- Every render with a redaction record (crops or empty) that a verb
+  records, during a run or in a revision, passes this gate first.
 
 ## Record the board
 
@@ -309,7 +351,10 @@ A board ready goes into the record through evidence-record's
 - `annotated` is the board, `~/.fast-browser/screenshots/<stem>.png`, on
   every image the board shows, and `caption` is the brief's `claim` on each
   of them. A pair board covers both the before and the after image of its
-  case.
+  case, unless the before's board is an import board (its
+  `<stem>.c1.capture.json` says `"source": "import"`): that board stays the
+  before's cover, so the pair covers the after alone and the before stays
+  out of the call.
 - Each image's `path` is its own capture: `<stem>.c1.png` for a single
   board, each panel's own capture for a pair, the last step's capture for a
   steps board, and for an import the image the brief imported (its `value`
@@ -342,13 +387,18 @@ by hand:
 3. Edit `~/.fast-browser/screenshots/<stem>.spec.json`: the wording, tags,
    marks or redactions asked for, keeping the Labels rule, and append
    `{ "asked": "<their words>", "changed": "<what you changed>" }` to its
-   top-level `revisions` list (create it if absent).
+   top-level `revisions` list (create it if absent). On a return from step
+   5, add their words to this revision's entry instead of appending one,
+   so `<k>` stays the same for the whole revision.
 4. `fast-browser compose ~/.fast-browser/screenshots/<stem>.spec.json`, and
    read the board as in Read the board yourself.
-5. Gated (`<stem>.redactions.json` lists a crop): Gate evidence-redaction,
-   then `fast-browser compose --confirm` on that spec. A Hold there holds
-   the revision with nothing recorded; a refused confirm ends the
-   revision, the output quoted.
+5. A redaction record beside it (`<stem>.redactions.json`, with crops or
+   empty): Gate evidence-redaction, then `fast-browser compose --confirm`
+   on that spec. Widen or Hide something returns to step 3 with their
+   words, counted against `redaction-rounds:<stem>:r<k>`. A Hold there
+   holds the revision with nothing recorded; a refused confirm, a confirm
+   that left an empty record unconfirmed, or spent redaction rounds or
+   openings ends the revision, the output or the spent budget quoted.
 6. Record the board (above) for every image the board shows, the claim as
    `caption` (changed or not), through evidence-record's `Record the
    evidence`. The changed bundle lands in a content folder beside the old

@@ -27,6 +27,9 @@ digraph ship {
 
     ship_entered [label="Ship stage entered" shape=ellipse];
     run_field_get_mr [label="run_field_get {key: mr}" shape=plaintext];
+    recapture_asked [label="Reopened to re-capture the AFTER on a shipped run?" shape=diamond];
+    git_status_recapture [label="git status --porcelain; git log --oneline @{upstream}.. (re-capture)" shape=plaintext];
+    nothing_to_push [label="Nothing to push (re-capture)?" shape=diamond];
     domain_steps_before_gate [label="Run the domain steps before the gate (none when unbound)" shape=box];
     git_status_log [label="git status --porcelain; git log --oneline @{upstream}.. or -5" shape=plaintext];
     branch_stack [label="branch_stack {tree: <root>}" shape=plaintext];
@@ -37,9 +40,9 @@ digraph ship {
     run_field_set_target [label="run_field_set {key: shipTarget, value: <resolved target>, stage}" shape=plaintext];
     run_field_set_target_iterate [label="run_field_set {key: shipTarget, value: -, stage} (iterate)" shape=plaintext];
     run_field_set_target_hold [label="run_field_set {key: shipTarget, value: -, stage} (hold)" shape=plaintext];
-    run_budget_gate_rounds [label="run_budget {key: ship:ship-gate-rounds, limit: 1, stage}" shape=plaintext];
+    run_budget_gate_rounds [label="run_budget {key: ship:ship-gate-rounds, limit: 2, stage}" shape=plaintext];
     gate_rounds_spent [label="ship-gate-rounds spent?" shape=diamond];
-    run_budget_gate_reopenings [label="run_budget {key: ship:ship-gate-reopenings, limit: 1, stage}" shape=plaintext];
+    run_budget_gate_reopenings [label="run_budget {key: ship:ship-gate-reopenings, limit: 2, stage}" shape=plaintext];
     gate_reopenings_spent [label="ship-gate-reopenings spent?" shape=diamond];
     rebase_in_progress [label="Rebase in progress?" shape=diamond];
     git_rebase_abort [label="git_rebase {tree: <root>, abort: true}" shape=plaintext];
@@ -49,13 +52,13 @@ digraph ship {
     stash_them [label="Stash them" shape=box];
     domain_fast_checks [label="Run the domain's fast checks (none when unbound)" shape=box];
     checks_pass [label="Checks pass?" shape=diamond];
-    run_budget_fix_rounds [label="run_budget {key: ship:fix-rounds, limit: 3, stage}" shape=plaintext];
+    run_budget_fix_rounds [label="run_budget {key: ship:fix-rounds, limit: 4, stage}" shape=plaintext];
     fix_rounds_spent [label="fix-rounds spent?" shape=diamond];
     fix_test_first [label="Fix test-first, commit, rerun" shape=box];
     domain_rebases_unfinished [label="Domain rebases, and no rebase finished this pass?" shape=diamond];
     git_rebase_onto [label="git_rebase {tree: <root>, onto: origin/<resolved target>}" shape=plaintext];
     rebase_status [label="Rebase status?" shape=diamond];
-    run_budget_conflict_rounds [label="run_budget {key: ship:conflict-rounds, limit: 3, stage}" shape=plaintext];
+    run_budget_conflict_rounds [label="run_budget {key: ship:conflict-rounds, limit: 4, stage}" shape=plaintext];
     conflict_rounds_spent [label="conflict-rounds spent?" shape=diamond];
     resolve_conflict_files [label="Resolve the files, then git rebase --continue on Bash" shape=box];
     continue_result [label="Continue result?" shape=diamond];
@@ -71,18 +74,18 @@ digraph ship {
     gate_push_refused [label="Off-script gate: git_push refused" shape=box];
     make_recorded_move [label="Make the recorded move once" shape=box];
     push_landed [label="Push landed?" shape=diamond];
-    run_budget_landing_checks [label="run_budget {key: ship:landing-checks, limit: 1, stage}" shape=plaintext];
+    run_budget_landing_checks [label="run_budget {key: ship:landing-checks, limit: 2, stage}" shape=plaintext];
     landing_checks_spent [label="landing-checks spent?" shape=diamond];
     run_field_set_pushed_head [label="run_field_set {key: pushed, value: <{\"sha\": HEAD, \"priorPipelineId\": null} JSON>, stage}" shape=plaintext];
 
     git_remote_origin [label="git remote get-url origin" shape=plaintext];
     forge_host [label="Forge host?" shape=diamond];
-    run_budget_forge_clarify [label="run_budget {key: ship:forge-clarify-rounds, limit: 1, stage}" shape=plaintext];
+    run_budget_forge_clarify [label="run_budget {key: ship:forge-clarify-rounds, limit: 2, stage}" shape=plaintext];
     forge_clarify_rounds [label="forge-clarify-rounds spent?" shape=diamond];
     gate_which_forge [label="Gate clarify: which forge?" shape=box];
     mr_create [label="mr_create {repoName: <root>, sourceBranch, targetBranch: <resolved target>, title, description, draft, squash?, labels?, ifExists: return}" shape=plaintext];
     mr_create_result [label="mr_create result?" shape=diamond];
-    run_budget_mr_recalls [label="run_budget {key: ship:mr-create-recalls, limit: 1, stage}" shape=plaintext];
+    run_budget_mr_recalls [label="run_budget {key: ship:mr-create-recalls, limit: 2, stage}" shape=plaintext];
     mr_create_recalls [label="mr-create-recalls spent?" shape=diamond];
     mr_update_squash [label="mr_update {mrUrl, squash: true}" shape=plaintext];
     stop_gitlab_shortcut [label="STOP: GitLab goes through gitlab_get, the read tools and mr_*" shape=octagon style=filled fillcolor=red fontcolor=white];
@@ -95,7 +98,7 @@ digraph ship {
     capture_after_browser [label="Capture the AFTER with the browser (browser-evidence)" shape=box];
     capture_after_case [label="Capture the AFTER for the next case the domain names" shape=box];
     after_result [label="AFTER result?" shape=diamond];
-    run_budget_after_attempts [label="run_budget {key: ship:after-attempts:<case id>, limit: 2, stage}" shape=plaintext];
+    run_budget_after_attempts [label="run_budget {key: ship:after-attempts:<case id>, limit: 3, stage}" shape=plaintext];
     after_attempts_spent [label="after-attempts spent?" shape=diamond];
     every_case_tried [label="Every named case tried?" shape=diamond];
     after_captured [label="AFTER captured this pass?" shape=diamond];
@@ -120,7 +123,12 @@ digraph ship {
     ship_done [label="Ship done: return to the orchestrator" shape=doublecircle style=filled fillcolor=lightgreen];
 
     ship_entered -> run_field_get_mr;
-    run_field_get_mr -> domain_steps_before_gate;
+    run_field_get_mr -> recapture_asked;
+    recapture_asked -> domain_steps_before_gate [label="no"];
+    recapture_asked -> git_status_recapture [label="yes: mr is set"];
+    git_status_recapture -> nothing_to_push;
+    nothing_to_push -> run_field_get_evidence [label="yes: no push, no mr_create"];
+    nothing_to_push -> domain_steps_before_gate [label="no: ship the new commits first"];
     domain_steps_before_gate -> git_status_log;
     git_status_log -> branch_stack;
     branch_stack -> stack_parent_read;
@@ -263,6 +271,18 @@ digraph ship {
     run_hold -> held_end_turn;
 }
 ```
+
+### Reopened to re-capture the AFTER on a shipped run?
+
+Yes when the orchestrator reopened this stage on a done run because the
+operator asked for a new AFTER (or a re-attach of the evidence), and `mr`
+is set. Nothing to push is a clean tree and an empty `git log
+@{upstream}..`: the MR already carries HEAD, so the route goes straight to
+the AFTER with no gate, no `git_push` and no `mr_create`. The operator's
+ask is the attach consent and covers the title and description write after
+it, `mr` is `mrUrl`, and the capture's `page:` is on HEAD. Anything to push
+takes the usual route: the reopen cleared `shipTarget`, so the gate asks
+first.
 
 ### Run the domain steps before the gate (none when unbound)
 
@@ -413,12 +433,17 @@ browser case still runs. A capture is never uploaded outside the record.
 `label`), `tree` is `<root>`. A browser AFTER carries its board as
 `annotated` and the brief's claim as `caption` (browser-evidence, Record
 the board); a pair board covers the case's before image too, named by its
-`value` path. Recorded goes straight to the attach: this stage writes no
+`value` path, unless that before's board is an import board (its
+`<stem>.c1.capture.json` in the record's folder says `"source": "import"`):
+the before keeps that board and stays out of this call, so the pair covers
+the after alone. Recorded goes straight to the attach: this stage writes no
 `evidence` of its own.
 
 ### Attach the evidence (evidence-record)
 
-The ship gate's Proceed is the attach consent. This is the last attach, so
+The ship gate's Proceed is the attach consent (on a re-capture, the
+operator's ask). On GitLab, Gate evidence-boards then shows every file
+about to go up before anything uploads. This is the last attach, so
 a Take at the upload off-script gate (never the first call) sends
 `linkRefused: true`.
 
@@ -468,9 +493,9 @@ write happens.
 ## Budgets in this stage
 
 Each `run_budget` counts one as its loop is entered and lasts the stage
-attempt, through compaction and resume. Its `spent?` diamond reads `spent` against `limit`
-(`spent > limit`); ignore `exhausted` and `remaining` (`exhausted` is
-`spent >= limit` and would stop one round early). A failure quotes what it last saw (the error, the note, the
+attempt, through compaction and resume. Its `spent?` diamond is yes when
+that call returns `exhausted: true` (`spent >= limit`: the count that
+reaches `limit` takes yes). A failure quotes what it last saw (the error, the note, the
 failing output or conflicted files, the origin URL and answer, the images
 named, the refusal) as its reason.
 

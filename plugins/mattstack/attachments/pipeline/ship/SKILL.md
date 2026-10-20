@@ -21,6 +21,14 @@ digraph ship_run {
     rankdir=TB;
 
     ship_invoked [label="Trigger: ship invoked" shape=ellipse];
+    recapture_asked [label="Asked for a new AFTER capture on a run that already shipped?" shape=diamond];
+    find_recapture_run [label="Find the shipped run (ship re-capture)" shape=box];
+    run_snapshot_recapture [label="run_snapshot {runDb: <the shipped run>} (re-capture)" shape=plaintext];
+    standalone_done [label="A done standalone ship run (ship re-capture)?" shape=diamond];
+    run_stage_reopen [label="run_stage {runDb: <the shipped run>, action: start, stage: ship, reopen: true}" shape=plaintext];
+    reopen_result [label="Reopen result (ship)?" shape=diamond];
+    not_recaptured_here [label="Not re-captured here: name the work verb for a pipeline run, or report the run's status" shape=doublecircle];
+    reopen_refused [label="Not reopened: report the refusal and the move it names" shape=doublecircle];
     revise_asked [label="Asked to revise a board on a run that already shipped?" shape=diamond];
     find_shipped_run [label="Find the shipped run (ship)" shape=box];
     run_snapshot_shipped [label="run_snapshot {runDb: <the shipped run>}" shape=plaintext];
@@ -45,7 +53,16 @@ digraph ship_run {
     rt_too_old [label="rt too old: tell the user to update rt (ship)" shape=doublecircle];
     own_run_open [label="Own ship run open: go to the flow" shape=doublecircle style=filled fillcolor=lightgreen];
 
-    ship_invoked -> revise_asked;
+    ship_invoked -> recapture_asked;
+    recapture_asked -> find_recapture_run [label="yes"];
+    recapture_asked -> revise_asked [label="no"];
+    find_recapture_run -> run_snapshot_recapture;
+    run_snapshot_recapture -> standalone_done;
+    standalone_done -> run_stage_reopen [label="yes"];
+    standalone_done -> not_recaptured_here [label="no: a pipeline run, or not done"];
+    run_stage_reopen -> reopen_result;
+    reopen_result -> own_run_open [label="ok: the own run, reopened for a re-capture"];
+    reopen_result -> reopen_refused [label="refused"];
     revise_asked -> find_shipped_run [label="yes"];
     revise_asked -> run_enter [label="no"];
     find_shipped_run -> run_snapshot_shipped;
@@ -75,8 +92,8 @@ digraph ship_run {
 }
 ```
 
-An own run is a fresh or resumed one: it records identity and closes at the
-end. An inherited run records no identity, closes nothing, and hands
+An own run is a fresh, resumed or reopened one: it records identity and
+closes at the end. An inherited run records no identity, closes nothing, and hands
 back to the verb that invoked it.
 
 The flags, rendered by the compiler:
@@ -101,6 +118,24 @@ and `currentStage`, then one **Resume** option per candidate (`Resume
 not yours) / **Start fresh**, and **Hold** in `next`. Resume passes that
 candidate's `runId`.
 
+### Asked for a new AFTER capture on a run that already shipped?
+
+Yes when the operator wants the AFTER captured again (a stale state, a
+fixed view) or the evidence re-attached on a run whose MR is open. A change
+to an existing board with no new capture (a label, a redaction) is a
+revision, below.
+
+### Find the shipped run (ship re-capture)
+
+As in Find the shipped run (ship).
+
+### A done standalone ship run (ship re-capture)?
+
+Yes when `run_snapshot`'s run is `done`, its work type is `ship` and its
+`mr` field is set. A pipeline run's ship stage reopens through the work
+verb, so the no exit names it; a run that is not done is reported with its
+status.
+
 ### Find the shipped run (ship)
 
 The operator asks to change a board on a run that already shipped
@@ -118,7 +153,9 @@ find the case's board in the record (the image's `annotated` path in `value`), a
 browser-evidence's Revise a board steps 1 to 7, with `stage: ship` on
 every write and `mrUrl` = `mr`. Step 6 is `Record the evidence
 (evidence-record)` and step 7 is `Attach the evidence (evidence-record)`;
-the operator's ask is the attach consent. The first `evidence_attach`
+the operator's ask is the attach consent, and step 7's Gate
+evidence-boards shows every file about to go up, the revised board
+included, before anything uploads. The first `evidence_attach`
 carries no `linkRefused`; this is the last attach, so only a Take at its
 upload off-script gate resends with `linkRefused: true`.
 
@@ -156,6 +193,9 @@ digraph ship {
     rankdir=TB;
 
     run_open [label="Trigger: a ship run is open (own or inherited)" shape=ellipse];
+    reopened_recapture [label="Reopened for a re-capture (ship)?" shape=diamond];
+    git_status_recapture [label="git status --porcelain; git log --oneline @{upstream}.. (ship re-capture)" shape=plaintext];
+    nothing_to_push [label="Nothing to push (ship re-capture)?" shape=diamond];
     git_branch_current [label="git branch --show-current (ship)" shape=plaintext];
     on_default_branch [label="On the default branch (ship)?" shape=diamond];
     own_run_default_branch [label="Own run (default branch)?" shape=diamond];
@@ -172,9 +212,9 @@ digraph ship {
     run_field_set_target [label="run_field_set {key: shipTarget, value: <resolved target>, stage}" shape=plaintext];
     run_field_set_target_iterate [label="run_field_set {key: shipTarget, value: -, stage} (iterate)" shape=plaintext];
     run_field_set_target_hold [label="run_field_set {key: shipTarget, value: -, stage} (hold)" shape=plaintext];
-    run_budget_gate_rounds [label="run_budget {key: ship:ship-gate-rounds, limit: 1, stage}" shape=plaintext];
+    run_budget_gate_rounds [label="run_budget {key: ship:ship-gate-rounds, limit: 2, stage}" shape=plaintext];
     gate_rounds_spent [label="ship-gate-rounds spent (ship)?" shape=diamond];
-    run_budget_gate_reopenings [label="run_budget {key: ship:ship-gate-reopenings, limit: 1, stage}" shape=plaintext];
+    run_budget_gate_reopenings [label="run_budget {key: ship:ship-gate-reopenings, limit: 2, stage}" shape=plaintext];
     gate_reopenings_spent [label="ship-gate-reopenings spent (ship)?" shape=diamond];
     rebase_in_progress [label="Rebase in progress (ship exit)?" shape=diamond];
     git_rebase_abort [label="git_rebase {tree: <root>, abort: true}" shape=plaintext];
@@ -183,13 +223,13 @@ digraph ship {
     stash_them [label="Stash them (ship)" shape=box];
     domain_fast_checks [label="Run the domain's fast checks (none when unbound)" shape=box];
     checks_pass [label="Checks pass (ship)?" shape=diamond];
-    run_budget_fix_rounds [label="run_budget {key: ship:fix-rounds, limit: 3, stage}" shape=plaintext];
+    run_budget_fix_rounds [label="run_budget {key: ship:fix-rounds, limit: 4, stage}" shape=plaintext];
     fix_rounds_spent [label="fix-rounds spent (ship)?" shape=diamond];
     fix_test_first [label="Fix test-first, commit, rerun (ship)" shape=box];
     domain_rebases_unfinished [label="Domain rebases, and no rebase finished this pass (ship)?" shape=diamond];
     git_rebase_onto [label="git_rebase {tree: <root>, onto: origin/<resolved target>}" shape=plaintext];
     rebase_status [label="Rebase status (ship)?" shape=diamond];
-    run_budget_conflict_rounds [label="run_budget {key: ship:conflict-rounds, limit: 3, stage}" shape=plaintext];
+    run_budget_conflict_rounds [label="run_budget {key: ship:conflict-rounds, limit: 4, stage}" shape=plaintext];
     conflict_rounds_spent [label="conflict-rounds spent (ship)?" shape=diamond];
     resolve_conflict_files [label="Resolve the files, then git rebase --continue on Bash (ship)" shape=box];
     continue_result [label="Continue result (ship)?" shape=diamond];
@@ -202,17 +242,17 @@ digraph ship {
     gate_push_refused [label="ship off-script gate: git_push refused" shape=box];
     confirm_human_push [label="Confirm the human's push landed (ship)" shape=box];
     push_landed [label="Push landed (ship)?" shape=diamond];
-    run_budget_landing_checks [label="run_budget {key: ship:landing-checks, limit: 1, stage}" shape=plaintext];
+    run_budget_landing_checks [label="run_budget {key: ship:landing-checks, limit: 2, stage}" shape=plaintext];
     landing_checks_spent [label="landing-checks spent (ship)?" shape=diamond];
 
     git_remote_origin [label="git remote get-url origin (ship)" shape=plaintext];
     create_forge_host [label="Forge host (ship, create)?" shape=diamond];
-    run_budget_forge_clarify [label="run_budget {key: ship:forge-clarify-rounds, limit: 1, stage}" shape=plaintext];
+    run_budget_forge_clarify [label="run_budget {key: ship:forge-clarify-rounds, limit: 2, stage}" shape=plaintext];
     forge_clarify_spent [label="forge-clarify-rounds spent (ship)?" shape=diamond];
     gate_which_forge [label="ship gate clarify: which forge?" shape=box];
     mr_create [label="mr_create {repoName: <root>, sourceBranch, targetBranch: <resolved target>, title, description, draft, squash?, labels?, ifExists: return}" shape=plaintext];
     mr_create_result [label="mr_create result (ship)?" shape=diamond];
-    run_budget_mr_recalls [label="run_budget {key: ship:mr-create-recalls, limit: 1, stage}" shape=plaintext];
+    run_budget_mr_recalls [label="run_budget {key: ship:mr-create-recalls, limit: 2, stage}" shape=plaintext];
     mr_recalls_spent [label="mr-create-recalls spent (ship)?" shape=diamond];
     mr_update_squash [label="mr_update {mrUrl, squash: true}" shape=plaintext];
     stop_gitlab_shortcut [label="STOP: GitLab moves go through gitlab_get, the read tools and mr_* (ship)" shape=octagon style=filled fillcolor=red fontcolor=white];
@@ -226,7 +266,7 @@ digraph ship {
     capture_after_browser [label="Capture the AFTER with the browser (ship, browser-evidence)" shape=box];
     capture_after_case [label="Capture the AFTER for the next case the domain names (ship)" shape=box];
     after_result [label="AFTER result (ship)?" shape=diamond];
-    run_budget_after_attempts [label="run_budget {key: ship:after-attempts:<case id>, limit: 2, stage}" shape=plaintext];
+    run_budget_after_attempts [label="run_budget {key: ship:after-attempts:<case id>, limit: 3, stage}" shape=plaintext];
     after_attempts_spent [label="after-attempts spent (ship)?" shape=diamond];
     every_case_tried [label="Every named case tried (ship)?" shape=diamond];
     after_captured [label="AFTER captured this pass (ship)?" shape=diamond];
@@ -252,7 +292,7 @@ digraph ship {
     gh_pr_view_draft [label="gh pr view <mr> --json isDraft (draft check)" shape=plaintext];
     mr_still_draft [label="MR still a draft (ship)?" shape=diamond];
     gate_mark_ready [label="ship gate mark-ready" shape=box];
-    run_budget_mark_ready [label="run_budget {key: ship:mark-ready-rounds, limit: 1, stage}" shape=plaintext];
+    run_budget_mark_ready [label="run_budget {key: ship:mark-ready-rounds, limit: 2, stage}" shape=plaintext];
     mark_ready_spent [label="mark-ready-rounds spent (ship)?" shape=diamond];
     mark_ready_forge_host [label="Forge host (ship, mark-ready)?" shape=diamond];
     mr_ready [label="mr_ready {repoName: <root>, iid}" shape=plaintext];
@@ -270,7 +310,12 @@ digraph ship {
     failed [label="ship failed" shape=doublecircle];
     shipped [label="Shipped" shape=doublecircle style=filled fillcolor=lightgreen];
 
-    run_open -> git_branch_current;
+    run_open -> reopened_recapture;
+    reopened_recapture -> git_branch_current [label="no"];
+    reopened_recapture -> git_status_recapture [label="yes"];
+    git_status_recapture -> nothing_to_push;
+    nothing_to_push -> run_field_get_evidence [label="yes: no push, no mr_create"];
+    nothing_to_push -> git_branch_current [label="no: ship the new commits first"];
     git_branch_current -> on_default_branch;
     on_default_branch -> own_run_default_branch [label="yes"];
     on_default_branch -> own_run_identity [label="no"];
@@ -413,7 +458,7 @@ digraph ship {
     gh_pr_edit -> domain_runs_ci;
 
     domain_runs_ci -> run_watch_ci [label="yes"];
-    domain_runs_ci -> which_exit [label="no: done"];
+    domain_runs_ci -> which_exit [label="no, or a re-capture: done"];
     run_watch_ci -> watch_ci_result;
     watch_ci_result -> draft_forge_host [label="green"];
     watch_ci_result -> which_exit [label="red (done), off-script, failure or stand-down"];
@@ -435,9 +480,9 @@ digraph ship {
     mr_ready -> which_exit;
     gh_pr_ready -> which_exit;
 
-    which_exit -> run_close_done [label="own run: done, or stood down"];
+    which_exit -> run_close_done [label="own run: done, stood down, or a re-capture's failure"];
     which_exit -> run_close_abandoned [label="own run: abort"];
-    which_exit -> run_close_failed [label="own run: a failure or a hand back"];
+    which_exit -> run_close_failed [label="own run: a failure or a hand back, not on a re-capture"];
     which_exit -> hand_back_caller [label="inherited: any exit but hold"];
     which_exit -> run_hold [label="hold"];
     run_close_done -> shipped;
@@ -446,6 +491,19 @@ digraph ship {
     run_hold -> held_run_open;
 }
 ```
+
+### Reopened for a re-capture (ship)?
+
+Yes when the run graph reopened the shipped run for the operator's new
+AFTER. Nothing to push is a clean tree and an empty `git log
+@{upstream}..`: the MR already carries HEAD, so the flow goes straight to
+the AFTER with no gate, no `git_push` and no `mr_create`. The operator's
+ask is the attach consent and covers the title and description write
+after it, `mrUrl` is the run's `mr`, and the capture's `page:` is on HEAD.
+The run is running again, so a hold is `run_hold` and the end is
+`run_close`. A re-capture's failure still closes `done`, its reason in the
+report: the MR shipped, and only a done run reopens for the next try.
+Anything to push takes the usual route.
 
 ### Run the domain steps before the gate (none when unbound)
 
@@ -558,7 +616,8 @@ brief (browser-evidence's `Write one brief per board`), stem
 
 - The case's BEFORE has a bundle (a `<stem>.spec.json` beside its board):
   a pair, `state: BEFORE → AFTER`, with `before:` that spec's absolute
-  path. The pair board covers the BEFORE image too.
+  path. The pair board covers the BEFORE image too, unless the BEFORE's
+  board is an import board (Record the evidence).
 - Otherwise (a different screen, a ticket link or text, a new case): its
   own `AFTER` board, with no `before:`.
 
@@ -597,13 +656,18 @@ still runs.
 `label`), `tree` is `<root>`. A browser board's images carry it as
 `annotated` (`~/.fast-browser/screenshots/<stem>.png`) with the brief's
 claim as `caption`, as browser-evidence's Record the board says; a pair
-board also covers the case's BEFORE, named by its `value` path. Recorded
+board also covers the case's BEFORE, named by its `value` path, unless that
+BEFORE's board is an import board (its `<stem>.c1.capture.json` in the
+record's folder says `"source": "import"`): the BEFORE keeps that board and
+stays out of this call, so the pair covers the AFTER alone. Recorded
 goes straight to the attach: this verb writes no `evidence` of its own.
 
 ### Attach the evidence (evidence-record)
 
-The ship gate's Proceed is the attach consent. This is the last attach, so
-a Take at the upload off-script gate (never the first call) sends
+The ship gate's Proceed is the attach consent (on a re-capture, the
+operator's ask). On GitLab, Gate evidence-boards then shows every file
+about to go up before anything uploads. This is the last attach, so a
+Take at the upload off-script gate (never the first call) sends
 `linkRefused: true`; the off-script gate shares the push gate's
 `n`.
 
@@ -682,9 +746,9 @@ verb done, the MR a draft, the note quoted in the report.
 
 Each `run_budget` counts one as its loop is entered, so budgets survive
 compaction and resume within the stage attempt. The `spent` diamond after
-it reads `spent` against `limit` (`spent > limit`); ignore `exhausted` and
-`remaining` (`exhausted` is `spent >= limit` and would stop one round
-early). A failure quotes what it last saw (the error, the note, the
+it is yes when that call returns `exhausted: true` (`spent >= limit`: the count that
+reaches `limit` takes yes). A
+failure quotes what it last saw (the error, the note, the
 comparison, the origin URL and answer, the refusal) as its reason.
 
 ## Domain rules

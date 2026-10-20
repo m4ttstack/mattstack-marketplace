@@ -48,7 +48,7 @@ digraph evidence {
     capture_browser [label="Capture with the browser (browser-evidence)" shape=box];
     capture_before_case [label="Capture the BEFORE for the next case" shape=box];
     captured [label="Captured?" shape=diamond];
-    run_budget_capture_attempts [label="run_budget {runDb, key: evidence:capture-attempts:<case>, limit: 2, stage: evidence}" shape=plaintext];
+    run_budget_capture_attempts [label="run_budget {runDb, key: evidence:capture-attempts:<case>, limit: 3, stage: evidence}" shape=plaintext];
     capture_attempts_spent [label="capture-attempts spent?" shape=diamond];
     every_case_captured [label="Every planned case captured or located?" shape=diamond];
     pick_next_source [label="Pick the next source or view" shape=box];
@@ -56,9 +56,9 @@ digraph evidence {
     stop_new_source [label="STOP: a new data source is an off-script move" shape=octagon style=filled fillcolor=red fontcolor=white];
     gate_new_source [label="Off-script gate: a new data source" shape=box];
     off_script_answer [label="off-script answer?" shape=diamond];
-    run_budget_source_off_script [label="run_budget {runDb, key: evidence:source-off-script, limit: 1, stage: evidence}" shape=plaintext];
+    run_budget_source_off_script [label="run_budget {runDb, key: evidence:source-off-script, limit: 2, stage: evidence}" shape=plaintext];
     source_off_script_spent [label="source-off-script spent?" shape=diamond];
-    run_budget_gate_iterates [label="run_budget {runDb, key: evidence:gate-iterates, limit: 2, stage: evidence}" shape=plaintext];
+    run_budget_gate_iterates [label="run_budget {runDb, key: evidence:gate-iterates, limit: 3, stage: evidence}" shape=plaintext];
     gate_iterates_spent [label="gate-iterates spent?" shape=diamond];
     domain_attaches_mr [label="Domain attaches evidence to an MR here?" shape=diamond];
     run_field_get_branch [label="run_field_get {key: branch}" shape=plaintext];
@@ -150,7 +150,7 @@ digraph evidence {
     open_mr_on_branch -> record_evidence [label="no, or a PR not OPEN: ship attaches later"];
     gate_evidence_attach -> attach_answer;
     attach_answer -> record_evidence [label="attach now, or hand back the markdown"];
-    attach_answer -> gate_evidence_attach [label="iterate: revise each drawn board the note names, re-ask with their note"];
+    attach_answer -> gate_evidence_attach [label="iterate, or hide: revise each drawn board their words name, re-ask with their note"];
     {evidence_answer off_script_answer attach_answer} -> run_hold [label="hold"];
     record_evidence -> record_outcome;
     record_outcome -> attach_answered [label="Recorded"];
@@ -211,8 +211,9 @@ or it has none, a URL curl refuses, or one that redirects, is one no tool
 can fetch, and it is never fetched another way: the case takes the
 link-only branch.
 
-The saved file is the case's BEFORE `path`, and the first `evidence_record`
-call that names it carries `source: "ticket"` on that image: the record then
+The saved file is the case's BEFORE `path`, and every `evidence_record`
+call that names it carries `source: "ticket"` on that image, the first by
+this path and each later one by its run-folder copy's path: the record then
 refuses a waiver on it and the upload refuses its own path, so only its
 board ever leaves the machine. Once that call returns the image's run-folder
 copy in `value`, delete the saved original from the session temp root
@@ -301,7 +302,8 @@ text capture as `transcript`; the ticket location or a saved image's link
 as `url`; `tree` the worktree. A browser case's board that is ready rides
 on the first call: `path` its capture (`<stem>.c1.png`), `annotated` the
 board, `caption` the brief's claim (browser-evidence, Record the board).
-A saved ticket image carries `source: "ticket"`, and once the first call
+A saved ticket image carries `source: "ticket"` on this call and on every
+later call that names its copy, and once the first call
 returns its copy in `value`, delete the temp-root original (Save the ticket
 image as the BEFORE). The attach gate's `annotations` answers feed the annotate-or-waive pass
 for every other image. **Hand back the markdown** ends here, nothing
@@ -333,15 +335,30 @@ none: ship captures its AFTER, and the description names the gap.
 
 ## Gate `evidence-attach` (the domain attaches here and the lookup found an open MR or PR)
 
-One sentence above the form: what was captured and where it sits.
+One sentence above the form: what was captured and where it sits. Once a
+board is drawn, open the gate with `gate_open` (gate-protocol, Structured
+context): the source's `context` is a `boards@1` object whose `summary` is
+that sentence and whose `boards` are the boards drawn so far, at most 12
+(any more are shown at `Attach the evidence`'s evidence-boards gate), each browser
+case's Board ready board by its absolute path in the screenshots folder
+(the home directory written out, never `~`), with `slot: before`, its
+`theme` when it has one and the brief's claim as `caption`. With no board
+drawn yet (a ticket image's board is drawn at Record), it opens through
+`gate_ask` with the sentence as its context.
 
 | Question | Options (recommended first) | Shown when |
 |---|---|---|
+| `boards` (write-in) | **Nothing here should stay private** / **Hide something first**, with free text naming the board and what shows; no option recommended, since only the human, looking at the boards, can say | a board is drawn |
 | `annotations` | the proposed labels per board, each written `<TAG> \| <title> \| <description>` (browser-evidence, Labels), multi-select, all pre-selected; an image left with nothing selected goes to the waiver question (evidence record below); split `annotations-1`, ... over 4 | always |
 | `attach` (write-in) | **Hand back the markdown (Recommended)** (ship attaches) / **Attach to the MR now** | always |
 | `next` | **Proceed** / **Iterate here** / **Hold** | always |
 
-Selection: `{"annotations":[...],"attach":"now|handback"}`.
+Selection: `{"boards":"clear|hide|<their words>|null","annotations":[...],"attach":"now|handback"}`.
+
+**Hide something first**, or words naming a board, is a revision of that
+board as under Iterate here, adding a `redact` mark over what they name;
+then this gate is asked again. `Attach the evidence` still shows every
+board at its evidence-boards gate before anything goes up, these included.
 
 For a board not yet drawn (a ticket image, a non-browser image), the kept
 labels are its brief's `point at`. A browser case's board is already
@@ -354,7 +371,9 @@ board is not recorded yet and still sits in `~/.fast-browser/screenshots/`,
 so walk browser-evidence's Revise a board steps 3 to 5 on it, then re-ask
 this gate; `Record the evidence` records the revised board. A Hold at its
 redaction gate (step 5) is the stage's hold (`run_hold`); a refused
-confirm re-asks this gate with the output quoted.
+confirm, a confirm that left an empty record unconfirmed, or spent
+redaction rounds or openings re-asks this gate with the output or the spent
+budget quoted.
 
 | Thought | Reality |
 |---|---|
