@@ -320,7 +320,7 @@ says so.
 | `next` | **Proceed** / **Iterate here** / **Go back** / **Hold** | always |
 | `to` | one option per earlier stage, split `to-1`, ... over 4 | Go back answered and more than one earlier stage row |
 
-Selection: `{"dirty":"commit|stash|abort|null","open_as":"draft|ready","domain":{<answers>},"next":"proceed|iterate|redirect|hold","to":"<stage or null>","note":"<their words or null>"}`.
+Selection: `{"dirty":"commit|stash|abort|null","open_as":"draft|ready","domain":{<answers>},"next":"proceed|iterate|go-back|hold","to":"<stage or null>","note":"<their words or null>"}`.
 Abort's reason is `aborted at the ship gate`. With the store unreadable,
 Proceed records `<default branch> (stack store unreadable)`; the rebase
 and `mr_create` use the plain name.
@@ -352,9 +352,10 @@ Resolve each conflicted file `git_rebase` returned, then continue on Bash
 
 ### Push needs force-with-lease?
 
-Yes only when a rebase finished this pass and the upstream already held
-the commits it rewrote; never force otherwise. Never push a branch whose
-tests you have not seen pass this session.
+Yes only when the upstream holds commits HEAD no longer contains
+because a rebase rewrote them: one that finished this pass, or a board
+frame's rebase earlier in this run. Never force otherwise. Never push a
+branch whose tests you have not seen pass this session.
 
 ### Off-script gate: git_push refused
 
@@ -380,6 +381,10 @@ diamonds read the named forge, never the URL.
 
 ### Capture the AFTER with the browser (browser-evidence)
 
+Ship captures no BEFORE: a BEFORE is only what the evidence record
+already holds, taken before implementation changed the surface, so a case
+with no bundled BEFORE gets an AFTER board alone.
+
 `Browser screenshot for this case?` is yes when the domain has a
 `## Browser target` section (in its rules, or in the file they point at
 for it) and either its What proves a change names a view for this case's
@@ -402,8 +407,16 @@ A case already in the record keeps its `id`; a new case gets its `id` and
 
 `page:` comes from Reach the view, on the pushed sha; `show` and `point
 at` from What proves a change, the wording from Captions and `hide` from
-Personal data. Unbound, every block takes its default. Then walk
-browser-evidence's `Draw the boards` (Browser evidence below).
+Personal data. Unbound, every block takes its default.
+
+The first browser case of this pass takes every named browser case not
+yet tried into one hand-off: write all their after briefs, then walk
+browser-evidence's `Draw the boards` (Browser evidence below) once for
+them, so its redaction gate asks about them together. A later browser case
+already in that hand-off reads its own terminal from it, with no new
+spawn. A retry after `ship:after-attempts` is a hand-off of that case
+alone. A browser case named after that hand-off was made starts a hand-off
+of its own.
 
 Its terminals answer `AFTER result?`. Board ready is captured: the AFTER
 goes into `Record the evidence` with its board. Held at evidence-redaction
@@ -443,7 +456,7 @@ the after alone. Recorded goes straight to the attach: this stage writes no
 
 The ship gate's Proceed is the attach consent (on a re-capture, the
 operator's ask). On GitLab, Gate evidence-boards then shows every file
-about to go up before anything uploads. This is the last attach, so
+about to go up but a cleared board before anything uploads. This is the last attach, so
 a Take at the upload off-script gate (never the first call) sends
 `linkRefused: true`.
 

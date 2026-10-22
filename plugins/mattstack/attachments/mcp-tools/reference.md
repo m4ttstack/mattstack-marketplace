@@ -55,6 +55,14 @@ Answer an open gate's questions as this pane. Answer values must be option VALUE
                 "type": "string",
                 "pattern": "\\S",
                 "description": "Replacement for text the gate offered (an edited reply), used in its place. Comments go in note, never here."
+              },
+              "texts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "\\S"
+                },
+                "description": "Replacement text for what a multi-select question's picked options offered (an edited drafted comment), keyed by a picked option value. Comments go in note, never here."
               }
             },
             "required": [
@@ -139,7 +147,7 @@ List gates in all statuses unless open is true, optionally filtered by subject p
 ### gate_ask
 
 <!-- mcp-lint: allow -->
-Open a decision gate with the daemon-side ceremony: subject resolves from this session (explicit subject wins, else its running run, else its agent record's own subject), presentation is computed, and the operator is nudged. Always pass context, quoted from the material the reader decides on, and never trim or skip it for size: over the shared 8192-byte budget (top-level context plus every question's context), question contexts are dropped server-side first, then the top-level context if it is over on its own, and the drop is reported back as contextOmitted: true. A human-owned gate with no context is refused. The in-pane form caps every question at 4 options: keep navigation verbs (iterate, go back, hold) as their own next question and split a larger selection into <id>-1, <id>-2, ... questions whose answers read as one union; one over-cap question makes the whole gate present as wait, reported back as formCapExceeded with the remedy. Returns {id, presentation, subject, supersededId, paneAction, formChunks}; then act on the result's paneAction, which says form or wait for this pane. form: ask it in the pane with AskUserQuestion (the gate-fork hook allows it once this gate is open), then answer with the gate_answer tool ({id, answers}), which records the answer as this pane. wait: run `rt gate wait <id>` as background bash and end the turn; the wait itself is never a tool. Prefer {value, label} option objects; bare strings are accepted and stored normalized. Answers must be option VALUES verbatim, except that a question opened with writeIn: true may be answered {writeIn} with the human's own words. Under a run, pass runDb and stage. formChunks hold the questions 4 to a form.
+Open a decision gate with the daemon-side ceremony: subject resolves from this session (explicit subject wins, else its running run, else its agent record's own subject), presentation is computed, and the operator is nudged. Always pass context, quoted from the material the reader decides on, and never trim or skip it for size: the top-level context and every question's context are stored whole, with no size limit. A human-owned gate with no context is refused. The in-pane form caps every question at 4 options: keep navigation verbs (iterate, go back, hold) as their own next question and split a larger selection into <id>-1, <id>-2, ... questions whose answers read as one union; one over-cap question makes the whole gate present as wait, reported back as formCapExceeded with the remedy. Returns {id, presentation, subject, supersededId, paneAction, formChunks}; then act on the result's paneAction, which says form or wait for this pane. form: ask it in the pane with AskUserQuestion (the gate-fork hook allows it once this gate is open), then answer with the gate_answer tool ({id, answers}), which records the answer as this pane. wait: run `rt gate wait <id>` as background bash and end the turn; the wait itself is never a tool. Prefer {value, label} option objects; bare strings are accepted and stored normalized. Answers must be option VALUES verbatim, except that a question opened with writeIn: true may be answered {writeIn} with the human's own words. Under a run, pass runDb and stage. formChunks hold the questions 4 to a form.
 
 ```json
 {
@@ -202,7 +210,7 @@ Open a decision gate with the daemon-side ceremony: subject resolves from this s
           },
           "context": {
             "type": "string",
-            "description": "Material specific to this one question (what its choice turns on), shown with it; the top-level context stays the whole ask's. Shares the 8192-byte context budget with the top-level context."
+            "description": "Material specific to this one question (what its choice turns on), shown with it; the top-level context stays the whole ask's. Stored whole, like the top-level context."
           }
         },
         "required": [
@@ -246,7 +254,7 @@ Open a decision gate with the daemon-side ceremony: subject resolves from this s
 ### gate_open
 
 <!-- mcp-lint: allow -->
-Build, validate and size-fit a structured gate from a gate-ctx@1 source (source inline, sourcePath a .json file under a read root, or review: {findings | findingsPath, extras} built by the review-source recipe first), then open it with gate_ask's ceremony. It opens a gate only when called and never picks an answer: the skill owns the gate, presents it and answers it. A source with problems is refused with one line per problem and nothing opens. A boards@1 source with more than 12 boards, or one whose boards do not fit the budget structured, is refused and never opens as prose. The context is fitted to the shared 8192-byte budget (structured with optional parts trimmed, else prose); the form view is always the prose of the untrimmed source. Under a run, pass runDb and stage: scope defaults to kind and no kind maps to another scope, so a review-post gate passes scope: "post" itself. The untrimmed source is stored as extra.gate-source.<scope>. Returns gate_ask's result plus mode (structured | prose), fits, trimmed, contextDropped (fits false or the daemon dropped context), formContext and formChunks. handBack: true opens nothing and returns {open: {context, questions}, mode, fits, trimmed, contextDropped, droppedContexts, formContext, formChunks, labelsTruncated?}, with option text truncated as gate_ask does and dropping whole question contexts largest first (then the gate context) when even prose is over budget; outPath also writes the open, in gate-ctx.sh's output shape, to a temp-root file.
+Build and validate a structured gate from a gate-ctx@1 source (source inline, sourcePath a .json file under a read root, or review: {findings | findingsPath, extras} built by the review-source recipe first), then open it with gate_ask's ceremony. It opens a gate only when called and never picks an answer: the skill owns the gate, presents it and answers it. A source with problems is refused with one line per problem and nothing opens. A boards@1 source with more than 12 boards, or one whose boards do not fit the pane prose budget, is refused. The gate stores the context whole and untrimmed (structured, or prose for a legacy findings file); only the prose a Claude Code pane's form shows has a budget (8192 UTF-8 bytes): optional parts are trimmed first, then whole question contexts are left out largest first, then the gate context, and board-only fields never reach it. Under a run, pass runDb and stage: scope defaults to kind and no kind maps to another scope, so a review-post gate passes scope: "post" itself. The untrimmed source is stored as extra.gate-source.<scope>. Returns gate_ask's result plus mode (structured | prose), fits and trimmed (of the pane prose), contextDropped (the pane form left some context out), formContext and formChunks. handBack: true opens nothing and returns {open: {context, questions}, mode, fits, trimmed, contextDropped, droppedContexts, formContext, formChunks, labelsTruncated?}: open is the whole stored open with option text truncated as gate_ask does; formContext and formChunks are the fitted pane prose, droppedContexts the questions it left out. outPath also writes the open, in gate-ctx.sh fit's output shape (its pane key the pane prose), to a temp-root file.
 
 ```json
 {
@@ -1229,7 +1237,7 @@ Open a gate asking the herd operator one or more questions, using this worker pa
           },
           "context": {
             "type": "string",
-            "description": "Material specific to this one question (what its choice turns on), shown with it; the top-level context stays the whole ask's. Shares the 8192-byte context budget with the top-level context."
+            "description": "Material specific to this one question (what its choice turns on), shown with it; the top-level context stays the whole ask's. Stored whole, like the top-level context."
           }
         },
         "required": [
@@ -2835,6 +2843,14 @@ Answer one of this herd's open or parked gates as the shepherd. Answer values mu
                 "type": "string",
                 "pattern": "\\S",
                 "description": "Replacement for text the gate offered (an edited reply), used in its place. Comments go in note, never here."
+              },
+              "texts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "\\S"
+                },
+                "description": "Replacement text for what a multi-select question's picked options offered (an edited drafted comment), keyed by a picked option value. Comments go in note, never here."
               }
             },
             "required": [
@@ -3676,7 +3692,7 @@ GitLab only. Sort a pipeline's failed jobs, same-project child pipelines include
     },
     "config": {
       "type": "object",
-      "description": "Optional one-off override with the keys of a pack's ci-config.json."
+      "description": "Optional per-call changes: real-patterns, infra-patterns and noisy-jobs add to the ci.triage.* settings; base-depth, base-ref and skip-base replace them."
     },
     "base": {
       "type": "string",
@@ -3848,7 +3864,7 @@ Merge images, case labels or waivers, removals, a transcript or a ticket url int
 ### evidence_attach
 
 <!-- mcp-lint: allow -->
-Call only after the attach gate's proceed. Uploads each file the run's evidence record allows (each distinct annotated board and each waived capture, once) through mr_upload's guard with the run's id, reusing an earlier upload whose bytes and project match; renders the evidence section; and replaces the section under heading in the MR description (inserted above before, or appended). A refused or twice-timed-out file blocks the description write unless linkRefused is true, which names it as "<file name> (attached separately)" instead, never its path; a file an earlier call linked that way is sent again: refused again, it stays linked, is listed in linked and does not block; timed out twice, it lands in timedOutTwice like any other file. The target is mrUrl, or repoName with iid, else the run's mr field (an iid passed alone must match that field's, or the call is refused); with repoName and no iid there is no MR yet, so the section (and description, spliced, when passed) comes back unwritten. On GitHub nothing uploads and nothing is written: the section names each file as attached separately and next names the gh move. A section that names a path in your home directory (a caption, label, waiver, ticket or appendix carrying one) is never written, nor next given, and writeErrors says so. Returns {forge, mr, uploaded, refused (by bucket), timedOutTwice, linked, section, description?, descriptionWritten, notWritten?, writeErrors?}. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
+Call only after the attach gate's proceed. Uploads each file the run's evidence record allows (each distinct annotated board and each waived capture, once) through mr_upload's guard with the run's id, reusing an earlier upload whose bytes and project match; renders the evidence section (each case folded behind a summary when rt.evidence.foldScreenshots is on for the repo); and replaces the section under heading in the MR description (inserted above before, or appended). A refused or twice-timed-out file blocks the description write unless linkRefused is true, which names it as "<file name> (attached separately)" instead, never its path; a file an earlier call linked that way is sent again: refused again, it stays linked, is listed in linked and does not block; timed out twice, it lands in timedOutTwice like any other file. The target is mrUrl, or repoName with iid, else the run's mr field (an iid passed alone must match that field's, or the call is refused); with repoName and no iid there is no MR yet, so the section (and description, spliced, when passed) comes back unwritten. On GitHub nothing uploads and nothing is written: the section names each file as attached separately and next names the gh move. A section that names a path in your home directory (a caption, label, waiver, ticket or appendix carrying one) is never written, nor next given, and writeErrors says so. Returns {forge, mr, uploaded, refused (by bucket), timedOutTwice, linked, section, description?, descriptionWritten, notWritten?, writeErrors?}. Name the target with repoName (the repo's serialized identity, e.g. remote:gitlab.com%2Facme%2Facme-dev, an absolute path to a local checkout or worktree, or a repo label that matches exactly one registered repo) or with mrUrl (the MR's https URL, which also supplies iid; its project must be registered with rt). Given both, they must agree.
 
 ```json
 {
