@@ -8,7 +8,7 @@ The written purity rule and per-skill certification checklist for this repo
 
 1. Nothing domain-specific to any one team ships in this repo. Domain
    conventions, examples, and routing live in domain-owned packs that BIND
-   to the seams here (slots, pipelines, manifests).
+   to the seams here (props, pipelines, manifests).
 2. Nothing personal to one operator ships in prose or scripts: no personal
    names, home paths, or account hints. The bar is the README's: what
    someone else could actually pick up.
@@ -19,7 +19,15 @@ The written purity rule and per-skill certification checklist for this repo
 
 - [ ] `tests/certify.sh <skill-dir>` exits 0 (purity greps, no-ticket-id
       ban, frontmatter grammar, depth cap, vendored-resolver identity,
-      stage declaration).
+      stage declaration). A block-tree skill is a folder whose root is
+      `index.block.md`, with one `*.block.md` file per section and a
+      subfolder (with its own `index.block.md`) per section that has
+      children. Pass certify the engine's root folder
+      (`tests/certify.sh attachments/pipeline/ship`), never a subfolder:
+      a subfolder's `index.block.md` has no `name:` or `description:`,
+      so certify fails it. Its Mermaid graphs and each
+      block's props are checked when `rt skills compile` builds it, or
+      when `rt skills check --strict` compiles it.
 - [ ] desc-test selection micro-test: all scenarios in
       `tests/desc-test-scenarios.json` pass before AND after any
       description edit (`bun run tests/desc-test.ts`).
@@ -234,5 +242,7 @@ that quotes a shell form carries `<!-- mcp-lint: allow -->`.
 | 2026-10-20 | mattstack:gate-protocol, mattstack:review, mattstack:receive-review | pure | pass | n/a (descriptions unchanged) | gates store context whole: the structured-context size rule budgets only the pane form's prose (8192 UTF-8 bytes, board-only fields never in it) , whole question contexts leave the pane largest first after trimming, and the pane form renders the fit's `pane` key as it stands; minEngine raised to 0.32.14 (skills read `pane`); review and receive-review read `fits`/`contextDropped` as pane-only and point a gate-owning caller at the open file's `pane` key; mcp-tools reference regenerated (gate_ask and gate_open no longer describe a storage budget or `contextOmitted`); certify exit 0 on all three |
 | 2026-10-20 | mattstack:review, mattstack:review-posting, mattstack:review-core-body-tail | pure | pass | n/a (descriptions unchanged) | the review verb drafts every finding's `comment` and `summary.comment` into the report json before the gate (writing style loaded first, a demoted finding's comment says it is unverified) and sets `editable: true` in the extras; Compose posts each `texts` edit, else the draft, word for word, and the summary as the summary line then each folded no-diff-line text after one blank line (the board's `joinSummary`), on GitLab and GitHub; bad anchors gain only their `file:line`; review-posting composes nothing for a drafted review; self-review writes no drafts. RED 0/12 on G1 to G3 and D1 (3 reps each, fresh Sonnet, tool-less), GREEN 5/5 per scenario after one revision, S1 holds 5/5 (`docs/superpowers/tests/2026-10-20-review-drafted-comments/red-green.md`); certify exit 0 on all three; skills check --strict exit 0 |
 | 2026-10-20 | mattstack:review, mattstack:review-posting, mattstack:review-core-body-tail | pure | pass | n/a (descriptions unchanged) | the summary line follows the verdict: the review verb drafts `summary.comments`, one line per `outcome` option value the gate offers (`comment`, `approve`, and `request_changes` only on GitHub), only the `approve` line carrying an all-clear; `editable` needs a `comment` on every finding and exactly those keys; Compose posts the `outcome` answer's `text` (the caller's `summaryText`), else `summary.comments[<picked outcome>]`, the join unchanged; review-posting and the structured-findings field docs name `summary.comments`. RED 4/15 on V1 to V5 (3 reps each; every miss took the no-drafts branch and composed the summary, some with an all-clear), D2 0/3 (singular `summary.comment` with "Nothing here blocks the merge" for every verdict); GREEN 5/5 on V1 to V5, D1 and D2, G1 and G2 5/5, G3 9/10 (`docs/superpowers/tests/2026-10-20-review-drafted-comments/red-green.md`); certify exit 0 on all three |
+| 2026-10-23 | mattstack:work-progress | pure | pass | 5/5 scenarios, 5/5 haiku reps each (2 herd kept, epic and 2 plan added); full roster 22/23, the one miss (billing creating-a-pack) also misses on the old description | replaces the herd-only progress skill: the bundled script renders a herd (`--herd`) or plans and epics (`--plan` repeatable, `--title`, `--tree`) from rt's plan records; the skill picks the input, prints the view verbatim and never calls a plan done unless its row says so; RED: no skill loaded on plan or epic prompts, 6 hand calls and a hand-built table, plan 1 guessed done from plan 2 having started; GREEN (claude -p --plugin-dir, opus, sandboxed rt): epic prompt Skill + ls + 1 script call, plan "where is my plan at" and "how far along is it" Skill + 1 script call each, all printed verbatim, "herd progress" triggers it; the brief's description first missed "where is my plan at", fixed in 15e6d8f by adding that phrase; certify exit 0 |
+| 2026-10-23 | mattstack:shepherdr | pure | pass | n/a (description unchanged) | Progress pointer renamed to mattstack:work-progress, recompiled into skills/shepherdr; certify exit 0 |
 
 (Ledger rows are appended by the orchestrating session as each lane lands -- lanes themselves never edit this file.)
