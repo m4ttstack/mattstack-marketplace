@@ -15,14 +15,34 @@
         "source": "url",
         "url": "https://github.com/m4ttstack/fast-browser.git",
         "ref": "main",
-        "sha": "d0c656009a2e7fb57b6e4709f4c0e26244915de7"
+        "sha": "8f937bb534e0805852fc47c82de6fb77cf2d54c2"
       },
       "description": "macOS and Chrome alpha browser automation for Claude Code and Codex"
+    },
+    {
+      "name": "gate-form",
+      "source": "./plugins/gate-form",
+      "description": "Mattstack gates as a form in the pane: pick answers there instead of typing them."
+    },
+    {
+      "name": "human-todos",
+      "source": "./plugins/human-todos",
+      "description": "A pane of steps only you can do: Claude adds a step, you tick it, run it or skip it, and Claude hears back."
     },
     {
       "name": "mattstack",
       "source": "./plugins/mattstack",
       "description": "The mattstack skills pack: the work orchestrator and pipeline stages, orchestration skills, the review cluster, the GitLab CI forge adapter, and the parameterized-skill primitive with its authoring skill."
+    },
+    {
+      "name": "superpowers",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/m4ttstack/superpowers.git",
+        "ref": "mattstack",
+        "sha": "4e49c04aba058d593eaa02e9de3d70c030ab6973"
+      },
+      "description": "Superpowers with task groups and Native with reviews: mattstack's fork of obra/superpowers."
     }
   ]
 }

@@ -7,12 +7,11 @@ label: Dirty tree
 # Gate clarify: dirty tree
 
 Scope `clarify`. One sentence listing the uncommitted paths (the result's
-`paths`; when absent, quote `refusal`), then two questions, each its own question:
+`paths`; when absent, quote `refusal`), then the question:
 
 - `tree`: **I committed them, retry** / **Abort**
-- `next`: **Proceed** / **Hold**
 
-Selection `{"tree":"retry|abort","next":"proceed|hold"}`. Read `next` first: **Hold** ends the
+Selection `{"tree":"retry|abort","next":"proceed|hold"}`. Read `next` first: `hold` ends the
 turn with nothing moved. Never stash and
 proceed: moving someone's uncommitted work is not this skill's call. The
 form rule in the table under **Gate push** (its second row) binds this

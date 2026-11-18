@@ -30,21 +30,21 @@ none makes a new one the same way, never `mktemp -d`), as
     "context": {"gate-ctx": "reply@1", "thread": "<threadId>", "file": "<file>:<line>", "verb": "fix", "sha": "<short sha>", "text": "<the exact finalized reply>"},
     "options": [{"value": "post:<threadId>", "label": "post", "recommended": true, "description": "post this reply to the thread"},
                 {"value": "resolve:<threadId>", "label": "resolve", "recommended": true, "description": "resolve the thread"}]},
-   {"id": "thread-2", "...": "the next offered thread, its own id verbatim: a fix in this shape, or an override with verb reply, no sha, resolve not recommended"},
-   {"id": "next", "label": "Next", "multi": false,
-    "options": [{"value": "proceed", "label": "proceed", "recommended": true}, "iterate", "hold"]}
+   {"id": "thread-2", "...": "the next offered thread, its own id verbatim: a fix in this shape, or an override with verb reply, no sha, resolve not recommended"}
  ]}
 ```
 
 ONE multi-select question per offered thread, in verdict-table order,
-plus `next`. Its id is `thread-<n>` by 1-based position among the offered
+and nothing else. Its id is `thread-<n>` by 1-based position among the offered
 threads, its label the thread's `file:line`, its options exactly
 `post:<threadId>` and `resolve:<threadId>`, thread id VERBATIM, bare verb
 as the label.
-An Overview comment (a `resolvable: false` row) is labelled `Overview
-comment`, its `reply@1` `file` is exactly `Overview comment`, and it
-offers `post:<threadId>` alone: GitLab cannot resolve it, and that `file`
-is the only one a post-alone `reply@1` question is accepted with.
+An Overview comment is a `resolvable: false` row, or on GitHub any
+`gh-issue-comment-<n>` or `gh-review-<n>` row (`gh-issue-comment` rows
+carry `resolvable: null`). It is labelled `Overview comment`, its `reply@1`
+`file` is exactly `Overview comment`, and it offers `post:<threadId>`
+alone: neither forge can resolve it, and that `file` is the only one a
+post-alone `reply@1` question is accepted with.
 
 | Field | Filled from |
 |---|---|

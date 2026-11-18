@@ -34,6 +34,9 @@ flowchart TB
     stack_parent_read{Stack parent read?}
     run_field_get_target[/"run_field_get {key: shipTarget}"/]
     target_matches_fresh{shipTarget matches the fresh target?}
+    mr_field_set{Run's mr set before the ship gate?}
+    mr_view_state[/"mr_view {mrUrl: <mr>} (draft or ready, for the gate's reach)"/]
+    mr_for_branch[/"mr_for_branch {repoName: <root>, branches: [<branch>]} (an open MR's state, for the gate's reach)"/]
     gate_ship
     run_field_set_target[/"run_field_set {key: shipTarget, value: <resolved target>, stage}"/]
     run_field_set_target_iterate[/"run_field_set {key: shipTarget, value: -, stage} (iterate)"/]
@@ -84,11 +87,10 @@ flowchart TB
     run_budget_mr_recalls[/"run_budget {key: ship:mr-create-recalls, limit: 2, stage}"/]
     mr_create_recalls{mr-create-recalls spent?}
     mr_update_squash[/"mr_update {mrUrl, squash: true}"/]
-    stop_gitlab_shortcut[STOP: GitLab goes through gitlab_get, the read tools and mr_*]:::stop
-    gh_pr_create[/"gh pr create --fill --base <resolved target> [--draft]"/]
-    gh_create_result{gh pr create result?}
+    stop_gitlab_shortcut[STOP: forge moves go through gitlab_get, the read tools and mr_*]:::stop
     run_field_set_mr[/"run_field_set {key: mr, value: <url>, stage}"/]
     run_field_get_evidence[/"run_field_get {key: evidence}"/]
+    run_field_get_owed[/"run_field_get {key: owed-evidence}"/]
     browser_case{Browser screenshot for this case?}
     capture_after_browser
     capture_after_case
@@ -96,19 +98,19 @@ flowchart TB
     run_budget_after_attempts[/"run_budget {key: ship:after-attempts:<case id>, limit: 3, stage}"/]
     after_attempts_spent{after-attempts spent?}
     every_case_tried{Every named case tried?}
+    owed_on_run{Owed evidence on the run?}
+    run_field_set_owed[/"run_field_set {key: owed-evidence, value: <the list, each item captured this pass marked cleared at the pushed sha>, stage}"/]
     after_captured{AFTER captured this pass?}
     record_evidence
     record_outcome{Record outcome?}
     run_has_evidence{Run has an evidence record?}
     attach_evidence
     attach_outcome{Attach outcome?}
-    read_forge_host{"Forge host (read back)?"}
     mr_view_url[/"mr_view {mrUrl}"/]
-    gh_pr_view_body[/gh pr view <mr> --json title,body/]
+    run_field_get_review[/"run_field_get {key: review}"/]
     write_title_description
-    write_forge_host{"Forge host (write back)?"}
     mr_update_description[/"mr_update {mrUrl, title, description}"/]
-    gh_pr_edit[/gh pr edit <mr> --title <title> --body <description>/]
+    owed_left{Any owed-evidence item not cleared at the pushed sha?}
     run_stage_fail[/"run_stage {action: fail, stage, reason}"/]
     run_hold[/"run_hold {stage, reason, decidedBy}"/]
     held_end_turn(((Held: end the turn naming run and stage)))
@@ -128,8 +130,12 @@ flowchart TB
     stack_parent_read -->|yes: the stack parent| run_field_get_target
     stack_parent_read -->|"no: the default branch (an unreadable store or error says so)"| run_field_get_target
     run_field_get_target --> target_matches_fresh
-    target_matches_fresh -->|yes: the earlier Proceed stands| dirty_answer
-    target_matches_fresh -->|no| gate_ship
+    target_matches_fresh -->|"yes, and a person decided it: the earlier Proceed stands"| dirty_answer
+    target_matches_fresh -->|"no, or a mode's Proceed"| mr_field_set
+    mr_field_set -->|yes| mr_view_state
+    mr_field_set -->|no| mr_for_branch
+    mr_view_state --> gate_ship
+    mr_for_branch --> gate_ship
     gate_ship -->|proceed| run_field_set_target
     gate_ship -->|iterate| run_field_set_target_iterate
     gate_ship -->|hold| run_field_set_target_hold
@@ -167,7 +173,7 @@ flowchart TB
     conflict_rounds_spent -->|no| resolve_conflict_files
     conflict_rounds_spent -->|yes: reopen| run_budget_gate_reopenings
     run_budget_gate_reopenings --> gate_reopenings_spent
-    gate_reopenings_spent -->|no: reopen with what was quoted| gate_ship
+    gate_reopenings_spent -->|no: reopen with what was quoted| mr_field_set
     gate_reopenings_spent -->|yes: a failure| rebase_in_progress
     resolve_conflict_files --> continue_result
     continue_result -->|another commit conflicted| run_budget_conflict_rounds
@@ -196,7 +202,7 @@ flowchart TB
     run_field_set_pushed_head --> git_remote_origin
     git_remote_origin --> forge_host
     forge_host -->|GitLab| mr_create
-    forge_host -->|GitHub| gh_pr_create
+    forge_host -->|GitHub| mr_create
     forge_host -->|anything else| run_budget_forge_clarify
     run_budget_forge_clarify --> forge_clarify_rounds
     forge_clarify_rounds -->|no| gate_which_forge
@@ -210,23 +216,21 @@ flowchart TB
     mr_create_result -->|squashApplied: false| mr_update_squash
     mr_create_result -->|url: null| run_budget_mr_recalls
     mr_create_result -->|error: a failure| which_exit
-    mr_create_result -->|tempted to use the GitLab CLI| stop_gitlab_shortcut
+    mr_create_result -->|tempted to use the forge CLI| stop_gitlab_shortcut
     stop_gitlab_shortcut --> mr_create
     run_budget_mr_recalls --> mr_create_recalls
     mr_create_recalls -->|no: call again| mr_create
     mr_create_recalls -->|yes: a failure| which_exit
     mr_update_squash --> run_field_set_mr
-    gh_pr_create --> gh_create_result
-    gh_create_result -->|url printed, or already exists| run_field_set_mr
-    gh_create_result -->|error: a failure| which_exit
     run_field_set_mr --> run_field_get_evidence
-    run_field_get_evidence --> browser_case
+    run_field_get_evidence --> run_field_get_owed
+    run_field_get_owed --> browser_case
     browser_case -->|yes| capture_after_browser
     browser_case -->|no: the domain's own method, or no case named| capture_after_case
     capture_after_browser --> after_result
     capture_after_case --> after_result
     after_result -->|captured, or Board ready| every_case_tried
-    after_result -->|none named| after_captured
+    after_result -->|none named| owed_on_run
     after_result -->|skipped: unbound, not a browser case| every_case_tried
     after_result -->|the capture failed, or Not drawn: a failed brief or spent re-renders| run_budget_after_attempts
     after_result -->|Not drawn, a reason no retry fixes: go on without it| every_case_tried
@@ -235,7 +239,10 @@ flowchart TB
     after_attempts_spent -->|no: same case again| browser_case
     after_attempts_spent -->|yes: go on without it| every_case_tried
     every_case_tried -->|no| browser_case
-    every_case_tried -->|yes| after_captured
+    every_case_tried -->|yes| owed_on_run
+    owed_on_run -->|yes| run_field_set_owed
+    owed_on_run -->|"no: unset, or -"| after_captured
+    run_field_set_owed --> after_captured
     after_captured -->|yes| record_evidence
     after_captured -->|no| run_has_evidence
     record_evidence --> record_outcome
@@ -243,20 +250,17 @@ flowchart TB
     record_outcome -->|Record held at evidence-waiver or evidence-redaction| run_hold
     record_outcome -->|Record failed: a failure naming the images or quoting the error| which_exit
     run_has_evidence -->|yes| attach_evidence
-    run_has_evidence -->|no: the field is unset| read_forge_host
+    run_has_evidence -->|no: the field is unset| mr_view_url
     attach_evidence --> attach_outcome
-    attach_outcome -->|"Attached (never Taken: Take links)"| read_forge_host
+    attach_outcome -->|"Attached (never Taken: Take links)"| mr_view_url
     attach_outcome -->|Attach held| run_hold
     attach_outcome -->|Attach failed: a failure quoting the reason| which_exit
-    read_forge_host -->|GitLab| mr_view_url
-    read_forge_host -->|GitHub| gh_pr_view_body
-    mr_view_url --> write_title_description
-    gh_pr_view_body --> write_title_description
-    write_title_description --> write_forge_host
-    write_forge_host -->|GitLab| mr_update_description
-    write_forge_host -->|GitHub| gh_pr_edit
-    mr_update_description --> ship_done
-    gh_pr_edit --> ship_done
+    mr_view_url --> run_field_get_review
+    run_field_get_review --> write_title_description
+    write_title_description --> mr_update_description
+    mr_update_description --> owed_left
+    owed_left -->|"no: none owed, or every item cleared"| ship_done
+    owed_left -->|yes: hold, naming each item| run_hold
     run_stage_fail --> stage_failed
     run_hold --> held_end_turn
 ```

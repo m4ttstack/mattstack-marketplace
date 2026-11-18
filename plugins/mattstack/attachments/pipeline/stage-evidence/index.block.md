@@ -65,7 +65,6 @@ flowchart TB
     git_remote_origin[/git -C <worktree> remote get-url origin/]
     forge_host{Forge host?}
     mr_for_branch[/"mr_for_branch {repoName: <worktree>, branches: [<branch>]}"/]
-    gh_pr_view_branch[/gh pr view <branch> --json number,url,state/]
     open_mr_on_branch{Open MR or PR on the branch?}
     gate_evidence_attach["Gate evidence-attach (table below)"]
     attach_answer{attach answer?}
@@ -104,7 +103,7 @@ flowchart TB
     gate_evidence --> evidence_answer
     evidence_answer -->|proceed: intake and source recorded| ticket_shows_before
     evidence_answer -->|iterate: re-ask with their note| gate_evidence
-    evidence_answer -->|iterate, a role was waiting or unclaimed| run_budget_gate_iterates
+    evidence_answer -->|check again, or iterate, a role was waiting or unclaimed| run_budget_gate_iterates
     run_budget_gate_iterates --> gate_iterates_spent
     gate_iterates_spent -->|no: re-check| dev_endpoints
     gate_iterates_spent -->|yes: hand back, the roles named| run_stage_fail
@@ -145,13 +144,11 @@ flowchart TB
     domain_attaches_mr -->|no: ship attaches| record_evidence
     run_field_get_branch --> git_remote_origin
     git_remote_origin --> forge_host
-    forge_host -->|GitLab| mr_for_branch
-    forge_host -->|GitHub| gh_pr_view_branch
+    forge_host -->|GitLab or GitHub| mr_for_branch
     forge_host -->|another host: ship attaches| record_evidence
     mr_for_branch --> open_mr_on_branch
-    gh_pr_view_branch --> open_mr_on_branch
-    open_mr_on_branch -->|"yes (a PR's state is OPEN): keep its url"| gate_evidence_attach
-    open_mr_on_branch -->|no, or a PR not OPEN: ship attaches later| record_evidence
+    open_mr_on_branch -->|"yes: keep its url"| gate_evidence_attach
+    open_mr_on_branch -->|no: ship attaches later| record_evidence
     gate_evidence_attach --> attach_answer
     attach_answer -->|attach now, or hand back the markdown| record_evidence
     attach_answer -->|iterate, or hide: revise each drawn board their words name, re-ask with their note| gate_evidence_attach

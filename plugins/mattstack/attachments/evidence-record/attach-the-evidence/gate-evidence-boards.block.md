@@ -7,7 +7,7 @@ label: Evidence boards
 # Gate evidence-boards (below)
 
 Scope `evidence-boards:<stage>:<n>`, `<n>` counting this gate's openings
-in this stage pass from 1. Open it with `gate_open` (gate-protocol,
+in this stage pass from 1, reach `public`. Open it with `gate_open` (gate-protocol,
 Structured context): the source's `context` is a `boards@1` object.
 
 - `summary`: one sentence naming the MR and how many files go up.
@@ -25,7 +25,6 @@ later openings are not charged to the first.
 | Question | Options | Shown when |
 |---|---|---|
 | `boards` (write-in) | **Nothing here should stay private** / **Hide something first**, with free text naming the board and what shows | always |
-| `next` | **Proceed** / **Hold** | always |
 
 No option is recommended: whether a file may go public is the human's
 call, made by looking at it. Selection: `{"boards":"clear|hide|<their words>","next":"proceed|hold","note":"<their words or null>"}`.

@@ -497,6 +497,14 @@ the same stop point, and record that the miss is gone. For an override
 bound with no RED miss, `The miss is gone?` asks whether the run follows
 the named fill.
 
+A husk pack (`"husks": true` in `pack/skills.jsonc`) gives that session
+husks, and `load_skill` loads a husk only from an installed copy. So a
+husk pack's GREEN reads the stage's compiled text from the working tree
+instead, on Bash with the stage's bare name:
+`rt skills compile --pack <pack> --preview --verb stage-evidence`. <!-- mcp-lint: allow -->
+Read it in full; `The miss is gone?` asks whether the rule is in it.
+Re-run the stage on the same task once the publish has installed it.
+
 ### Revise the rule
 
 Revise the same source file against the miss the last run showed. The
@@ -607,7 +615,7 @@ it into the team pack. When a team pack `extends` a base, each compile:
   that holds a `SKILL.md` and is not a fill (no `metadata.provides`), plus
   every fill that only `board:*` bindings name, to the
   same path in the team pack;
-- writes `compiled.json` (the base, its version, the files) into each
+- writes `compiled.json` (the base and the files) into each
   copied folder: that file marks compile's output, which the next compile
   rewrites and
   `rt_verb {args: ["skills", "check", "--pack", "widgets"]}` reports as
@@ -638,6 +646,16 @@ Every compile also writes `pack/requires.json`, the engine floor
 output like the copies: never hand-edit it, and
 `rt_verb {args: ["skills", "check", "--pack", "widgets"]}` reports a stale
 one as drift.
+
+A husk pack (`"husks": true` in `pack/skills.jsonc`) commits none of those
+copies, `references/` copies or compiled bodies. A compile writes only a
+husk `SKILL.md` per verb, stage and door, `pack/compiled.lock.json` and
+`pack/requires.json`, whose floor rises only for a new need, never for an
+ordinary edit. A husk carries no rule text and changes only with its
+frontmatter; the lock changes with every source edit. Everything else
+lives in each member's render of the pack.
+mattstack:editing-skills (Husk packs) covers what is committed and how to
+read the rendered text.
 
 A compile with any failing verb writes and removes nothing, copies
 included. Edit the base's attachment, never the copy, then bump the base
@@ -722,8 +740,9 @@ has it.
 
 Hand to `mattstack:editing-skills`: bump, commit, push, check and sync each
 pack (`rt_verb {args: ["skills", "sync", "--pack", "<pack>"]}`), then
-`/reload-plugins`. The version bump changes every compiled skill's id, so
-the pack recompiles after the bump and before the commit. Every hand-off
+`/reload-plugins`. The version bump changes the versions in
+`pack/compiled.lock.json`, so the pack recompiles after the bump and
+before the commit. Every hand-off
 enters editing-skills at `What changed?`, with no RED baseline there:
 
 - A round that wrote or revised a skill or fill already passed its RED and

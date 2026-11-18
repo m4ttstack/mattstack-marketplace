@@ -186,17 +186,17 @@ digraph create_pack {
 | rt daemon | `rt_verb {args: ["daemon", "status"]}` | `"state":"running"` |
 | mattstack plugin | `claude plugin list --json` | an id starting `mattstack@` |
 | superpowers | `claude plugin list --json` | an id starting `superpowers@` |
-| a GitLab remote | `git remote get-url origin` | host is a GitLab host |
+| a GitHub or GitLab remote | `git remote get-url origin` | host is github.com or a GitLab host |
 
 ## Steps
 
 ### Name each miss and the command that installs it
 
 Report the missing thing and the command that installs it: `rt setup pack`,
-run once and not routine, covers only the first three rows. A missing or
-non-GitLab `origin` is the author's to fix: name the miss and say the remote
-must be the repo on its GitLab host. Never set a remote yourself. Do not
-improvise a substitute.
+run once and not routine, covers only the first three rows. An `origin`
+that is missing or on neither forge is the author's to fix: name the host
+you found and say a pack needs the repo on GitHub or GitLab. Never set a
+remote yourself. Do not improvise a substitute.
 
 ### Ask the author which team
 
@@ -437,6 +437,20 @@ as init and the remedy left it, for the author.
   `mattstack/org/packs/` in the org clone, say `acme-base`), add
   `--extends acme-base`: init writes `"extends": "acme-base"` into the
   fragment and seeds any values the base asks the team for.
+- Init writes a pack that commits every compiled skill in full. For commits
+  that show only the files people edit, set `"husks": true` in the pack's
+  `pack/skills.jsonc` and compile with
+  `rt_verb {args: ["skills", "compile", "--pack", "<pack>"]}`. The pack then
+  commits husks (each skill's frontmatter plus one line that loads its full
+  text through `mcp__mattstack__load_skill`), its sources, the lock and
+  `pack/requires.json`. Each member's Mac renders the full skills itself
+  after a pull, after setup installs, or when a skill first loads. That
+  compile raises the pack's floor to the release that ships `load_skill`,
+  so a member on an older app holds the pack until they update. Publish it
+  through `mattstack:editing-skills`, entering at `What changed?` on the
+  `no skill folder written` edge: the bump's commit carries the switch,
+  the husks, the removed compiled files, the lock and the floor. Its Husk
+  packs section says the rest.
 - The pack binds the repos in its team's `board.projects` (the org's list
   unless the team sets its own), on the org's forge host. Init adds this
   repo to the team's list.

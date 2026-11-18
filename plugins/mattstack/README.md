@@ -11,7 +11,7 @@ mattstack is one piece of a small estate of tools. [rt](https://github.com/m4tts
 is the developer CLI (daemon, tray app, plugin system) that some of these
 skills shell out to. [gitq](https://github.com/m4ttstack/mattstack/tree/main/apps/gitq) is a
 deterministic stacked-branch engine for git. [board](https://github.com/m4ttstack/mattstack/tree/main/apps/board)
-is a one-page view of a team's open GitLab MRs. [glance](https://github.com/m4ttstack/mattstack/tree/main/packages/glance)
+is a one-page view of a team's open MRs or PRs, on GitLab or GitHub. [glance](https://github.com/m4ttstack/mattstack/tree/main/packages/glance)
 is one client for GitHub and GitLab behind a single set of types.
 [deck](https://github.com/m4ttstack/mattstack/tree/main/apps/deck) gives a local app a name, keeps it
 running, and gives it a real address. [fast-browser](https://github.com/m4ttstack/fast-browser)
@@ -227,25 +227,25 @@ one-off with no props.
 
 ### Forge
 
-Two clusters share this name: adapters for a CI forge (GitLab today, with
-the seam left open for GitHub), and worktree/branch operations against a
+Two clusters share this name: a legacy adapter for a CI forge, and
+worktree/branch operations against a
 code forge (GitHub or GitLab). Both are engines, reached only through a
 binding or a pack's compile, never directly.
 
-- **mattstack:ci-forge-gitlab** -- GitLab implementation of the watch-ci
-  stage's `forge` prop: pipeline tree-walking, job listing, triage refs.
+- **mattstack:ci-forge-gitlab** -- legacy fill for the watch-ci stage's
+  `forge` prop. CI watch and triage go through the `ci_watch` and
+  `ci_triage` tools on both GitLab and GitHub.
 - **checkout** -- get a local worktree for someone else's branch, given a
   branch name, an MR/PR link or number, or a ticket id, without starting
   work on it.
 - **checkout-and-open** -- the same checkout, plus opening it in an editor
   in one step.
-- **map-open-mrs** -- pair every one of the user's open MRs/PRs with the
-  local worktree holding its branch; the discovery step of `sync-open-mrs`
-  on GitHub.
+- **map-open-mrs** -- pair every one of the user's open MRs or PRs with the
+  local worktree holding its branch, in one `mr_map` call.
 - **rebase-worktree** -- rebase one worktree's feature branch onto a moved
   default branch.
 - **sync-open-mrs** -- rebase every open MR/PR in one sweep: it maps with
-  `mr_map` on GitLab and follows `map-open-mrs` on GitHub, then syncs with
+  `mr_map` on both forges, then syncs with
   `branch_sync_sweep` when every listed branch is selected, and one
   `branch_sync` per branch otherwise.
 

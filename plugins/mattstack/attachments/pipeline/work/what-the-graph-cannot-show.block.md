@@ -16,10 +16,21 @@ label: Graph notes
 - **One owner for stage rows.** The run tools write them; a stage writes
   its fields and its own `run_stage fail`. Never write stage rows, produce
   clears, `shipTarget` or `pipeline-stages` here.
-- **Hand-back.** A stage ending at a Go back hands `{to, note,
+- **Hand-back.** A stage ending at a `go-back` hands `{to, note,
   decidedBy}`, and a Fix hands `{to: implement, note, decidedBy}` the same
-  way; `attempt` is its running attempt.
+  way; `attempt` is its running attempt. A stage whose gate already
+  redirected through gate-protocol's Run control takes the same edge with
+  that gate's `to`; `run_resolve` returns it `repeated: true`.
 - **`repeated: true`**: already applied; follow the result.
+- **`attempt` on `run_next`** is the stage's attempt from the last
+  `run_enter`, `run_next` or `run_resolve` result, so a retried call after
+  a lost reply gets the same answer.
+- **Commit before a gate.** A stage that changed files in the tree
+  commits them before it opens a gate, so the gate's recorded commit is
+  where that work ends.
+- **Pause and Redo from the console** land at `run_next`: a Pause returns
+  `held`, a Redo returns `redirected`. A Redo to a stage ahead of the run
+  returns `held` with `redo` (the gate's id).
 - **decidedBy** is the gate tool's returned `decidedBy`, or, for a
   hand-back, the handed `decidedBy` (`pane` when it was typed in the
   pane). The gate tools record each gate's answers; this file records none.
