@@ -168,7 +168,7 @@ var SYMBOL = {
   boxActive: "◻",
   boxOn: "◼",
   boxOff: "◻",
-  selectEdge: "▎"
+  selectEdge: "❯"
 };
 var ICON = {
   layers: "",
@@ -243,15 +243,24 @@ function pressed(span) {
   const out = pressOf(span);
   return span.mark ? { ...out, color: span.mark } : out;
 }
-function keySelected(span) {
-  if (!span.t.startsWith(" "))
-    return [span];
-  const edge = span.bg === BRAND.pink || span.bg === BRAND.pinkDeep ? "white" : BRAND.pink;
-  return [
-    { ...span, t: SYMBOL.selectEdge, color: edge, mark: edge, bold: false, dim: false },
-    { ...span, t: span.t.slice(1) }
-  ];
+function markButtonAt(line, at, focus = {}) {
+  const button = line[at];
+  if (!button)
+    return line;
+  const lit = focus.pressing ? pressed(button) : hoverOf(button);
+  let back = at - 1;
+  while (back >= 0 && line[back].t === "")
+    back -= 1;
+  const prev = line[back];
+  const keep = (spans) => Object.assign(spans, line.action === undefined ? {} : { action: line.action });
+  if (prev && prev.action === undefined && /^ +$/.test(prev.t)) {
+    const mark = prev.t.length >= 2 ? `${SYMBOL.selectEdge} ` : SYMBOL.selectEdge;
+    const rest = prev.t.slice(mark.length);
+    return keep([...line.slice(0, back), ...rest === "" ? [] : [{ ...prev, t: rest }], sp(mark, { bold: true, ...prev.bg && { bg: prev.bg } }), ...line.slice(back + 1, at), lit, ...line.slice(at + 1)]);
+  }
+  return keep([...line.slice(0, at), sp(SYMBOL.selectEdge, { bold: true }), lit, ...line.slice(at + 1)]);
 }
+var CURSOR_ROW = "#2e2e2e";
 var ACCENT = { color: "cyan" };
 var GRAY = { color: "gray" };
 var DONE = { color: "green" };
@@ -469,20 +478,21 @@ var isRecommended = (o) => /\(recommended\)\s*$/i.test(o.label);
 var replaceAt = (list, i, value) => list.map((old, k) => k === i ? value : old);
 var markAnswered = (s, i) => replaceAt(s.answered, i, true);
 function choicesOf(q) {
-  if (q.options.length === 0 || !q.other)
-    return q.options;
-  return [...q.options, { value: WRITE_IN, label: "Something else", description: "Write in your answer" }];
+  const ordered = [...q.options.filter(isRecommended), ...q.options.filter((o) => !isRecommended(o))];
+  if (ordered.length === 0 || !q.other)
+    return ordered;
+  return [...ordered, { value: WRITE_IN, label: "Type something." }];
 }
 function initial(form) {
+  const chosen = form.questions.map((q) => isConfirm(form) || q.multi ? undefined : q.options.find(isRecommended)?.value);
   return {
     page: 0,
-    cursor: form.questions.map((q) => isConfirm(form) ? 0 : Math.max(0, q.options.findIndex(isRecommended))),
-    picked: form.questions.map(() => []),
+    cursor: form.questions.map(() => 0),
+    picked: form.questions.map((q) => isConfirm(form) || !q.multi ? [] : q.options.filter(isRecommended).map((o) => o.value)),
     text: form.questions.map(() => ""),
     answered: form.questions.map(() => false),
-    moved: form.questions.map(() => false),
+    chosen,
     phase: "active",
-    tabsFrom: 0,
     menu: { open: false, selected: 0 },
     navAt: "next"
   };
@@ -494,17 +504,20 @@ function canSubmit(form, s) {
 }
 function chosenValue(form, s) {
   const q = form.questions[0];
-  return q && (cursorIsChoice(q, s, 0) || choicesOf(q).length === 1) ? choicesOf(q)[s.cursor[0]]?.value : undefined;
+  if (!q)
+    return;
+  return s.chosen[0] ?? (choicesOf(q).length === 1 ? choicesOf(q)[0].value : undefined);
 }
 var PAUSE = "pause";
 var GO_BACK = "go-back:";
 var canChat = (form) => form.source !== "plugin";
 var isSinglePage = (form) => form.source === "plugin";
 var isConfirm = (form) => form.confirm === true;
+var isOneQuestion = (form) => !isSinglePage(form) && form.questions.length === 1 && menuRows(form).length === 0;
 var isReview = (form, s) => !isSinglePage(form) && s.page === form.questions.length;
 var isOnNav = (form, s) => s.onNav === true || isReview(form, s);
 function navIds(form, s) {
-  const ids = s.page > 0 && !isReview(form, s) ? ["back", "next"] : ["next"];
+  const ids = s.page > firstPage(s) && !isReview(form, s) ? ["back", "next"] : ["next"];
   if (isReview(form, s) && menuRows(form).length > 0)
     ids.push("more");
   if (canChat(form))
@@ -541,7 +554,9 @@ function isPicked(q, s, i, idx) {
   const value = choicesOf(q)[idx]?.value;
   if (value === undefined)
     return false;
-  return s.picked[i].includes(value) || value === WRITE_IN && q.multi && s.text[i].trim() !== "";
+  if (!q.multi)
+    return s.chosen[i] === value;
+  return s.picked[i].includes(value) || value === WRITE_IN && s.text[i].trim() !== "";
 }
 function isTyping(form, s) {
   const q = form.questions[s.page];
@@ -560,9 +575,13 @@ function answersOf(form, s) {
       out[q.id] = s.text[i];
     else if (q.multi) {
       const values = s.picked[i].filter((v) => v !== WRITE_IN);
-      out[q.id] = typed === "" ? values : values.length > 0 ? { value: values, note: typed } : { writeIn: typed };
+      if (q.parts)
+        for (const part of q.parts)
+          out[part.id] = values.filter((v) => part.values.includes(v));
+      else
+        out[q.id] = typed === "" ? values : values.length > 0 ? { value: values, note: typed } : { writeIn: typed };
     } else {
-      const value = choicesOf(q)[s.cursor[i]]?.value;
+      const value = s.chosen[i];
       out[q.id] = value === WRITE_IN ? { writeIn: typed } : value;
     }
   });
@@ -570,37 +589,38 @@ function answersOf(form, s) {
 }
 function goTo(form, s, page) {
   const last = isSinglePage(form) ? 0 : form.questions.length;
-  return { ...s, page: Math.max(0, Math.min(last, page)) };
+  return { ...s, page: Math.max(firstPage(s), Math.min(last, page)) };
 }
-function cursorIsChoice(q, s, i) {
-  const option = choicesOf(q)[s.cursor[i]];
-  if (!option || option.value === WRITE_IN && s.text[i].trim() === "")
-    return false;
-  return s.answered[i] || s.moved[i] || isRecommended(option);
-}
-function takesCursorAsAnswer(form, s) {
-  const q = form.questions[s.page];
-  return q !== undefined && !q.multi && !s.answered[s.page] && cursorIsChoice(q, s, s.page);
-}
+var firstPage = (s) => s.contextPaged ? -1 : 0;
+var isContextPage = (s) => s.page < 0;
 function advance(form, s) {
-  const answered = takesCursorAsAnswer(form, s) ? markAnswered(s, s.page) : s.answered;
-  return goTo(form, { ...s, answered }, s.page + 1);
+  const i = s.page;
+  const q = form.questions[i];
+  const accepts = q !== undefined && (q.multi ? s.picked[i].length > 0 : s.chosen[i] !== undefined);
+  return goTo(form, accepts ? { ...s, answered: markAnswered(s, i) } : s, i + 1);
 }
 function moveCursor(form, s, by) {
   const q = form.questions[s.page];
   const count = q ? choicesOf(q).length : 0;
   if (count === 0)
     return s;
-  return { ...s, cursor: replaceAt(s.cursor, s.page, (s.cursor[s.page] + by + count) % count), moved: replaceAt(s.moved, s.page, true) };
+  return { ...s, cursor: replaceAt(s.cursor, s.page, (s.cursor[s.page] + by + count) % count) };
 }
 function toggled(s, i, value) {
   const has = s.picked[i].includes(value);
   return { ...s, picked: replaceAt(s.picked, i, has ? s.picked[i].filter((p) => p !== value) : [...s.picked[i], value]), answered: markAnswered(s, i) };
 }
+function chose(s, i, value) {
+  if (value === WRITE_IN && s.text[i].trim() === "")
+    return s;
+  return { ...s, chosen: replaceAt(s.chosen, i, value), answered: markAnswered(s, i) };
+}
 function toggleAtCursor(form, s) {
   const q = form.questions[s.page];
   const value = q && choicesOf(q)[s.cursor[s.page]]?.value;
-  return value === undefined ? s : toggled(s, s.page, value);
+  if (value === undefined)
+    return s;
+  return q?.multi ? toggled(s, s.page, value) : chose(s, s.page, value);
 }
 function confirm(form, s) {
   const i = s.page;
@@ -608,6 +628,10 @@ function confirm(form, s) {
   if (!q)
     return s;
   const value = choicesOf(q)[s.cursor[i]]?.value;
+  if (choicesOf(q).length > 0 && !q.multi) {
+    const picked = value === undefined ? s : chose(s, i, value);
+    return value !== undefined && picked.chosen[i] === value ? { ...picked, page: i + 1 } : picked;
+  }
   const adds = q.multi && value !== undefined && value !== WRITE_IN && !s.picked[i].includes(value);
   return { ...s, page: i + 1, answered: markAnswered(s, i), ...adds && { picked: replaceAt(s.picked, i, [...s.picked[i], value]) } };
 }
@@ -621,14 +645,26 @@ function clickChoice(form, s, idx) {
   if (value === undefined || value === WRITE_IN)
     return { ...s, cursor };
   if (!q.multi)
-    return { ...s, cursor, answered: markAnswered(s, i) };
+    return chose({ ...s, cursor }, i, value);
   return { ...toggled(s, i, value), cursor };
 }
-function typeChar(s, ch) {
-  return { ...s, text: replaceAt(s.text, s.page, s.text[s.page] + ch), answered: markAnswered(s, s.page) };
+function typeChar(form, s, ch) {
+  const i = s.page;
+  const text = replaceAt(s.text, i, s.text[i] + ch);
+  const q = form.questions[i];
+  const isWriteIn = q !== undefined && choicesOf(q).length > 0;
+  if (!isWriteIn)
+    return { ...s, text, answered: markAnswered(s, i) };
+  if (text[i].trim() === "")
+    return { ...s, text };
+  return q.multi ? { ...s, text, answered: markAnswered(s, i) } : { ...s, text, chosen: replaceAt(s.chosen, i, WRITE_IN), answered: markAnswered(s, i) };
 }
 function deleteChar(s) {
-  return { ...s, text: replaceAt(s.text, s.page, s.text[s.page].slice(0, -1)) };
+  const i = s.page;
+  const text = replaceAt(s.text, i, s.text[i].slice(0, -1));
+  if (s.chosen[i] !== WRITE_IN || text[i].trim() !== "")
+    return { ...s, text };
+  return { ...s, text, chosen: replaceAt(s.chosen, i, undefined), answered: replaceAt(s.answered, i, false) };
 }
 
 // mods/gate-form/src/gate/reply.ts
@@ -655,6 +691,7 @@ function agentReply(form, outcome) {
 `);
 }
 var GATE_INSTRUCTION = (gateId) => `The gate is open in the kit form. Open any boards first (per \`boards_to_open\`), then end your turn holding at gate \`${gateId}\`. The answer arrives as your next input.`;
+var RELAY_INSTRUCTION = (gateId) => `Gate \`${gateId}\` is queued in your kit form. Present any other open gates, then end your turn. The answer is recorded as the shepherd's and wakes its worker; don't wait on it or reconcile it.`;
 var BOARD_INSTRUCTION = (gateId) => `The kit form can't draw this gate, so it waits on the board. Run \`rt gate wait ${gateId}\` as a background Bash task, then end your turn holding at gate \`${gateId}\`.`;
 var BOARD_TOAST = (title, reason) => `${title} can't show in the form: ${reason} Answer it on the board.`;
 var GATE_ANSWERED = (gateId) => `Gate ${gateId} was answered in the kit form. Call gate_reconcile for it.`;
@@ -713,6 +750,46 @@ function toQuestion(q, seen, source) {
     options
   };
 }
+var SPLIT_ID = /^(.+)-(\d+)$/;
+var PART_OF = /\s*\(\d+\s+of\s+\d+\)\s*$/i;
+function joinSplits(questions) {
+  const ids = new Set(questions.map((q) => q.id));
+  const out = [];
+  let i = 0;
+  while (i < questions.length) {
+    const first = SPLIT_ID.exec(questions[i].id);
+    const base = first?.[1];
+    if (!first || first[2] !== "1" || base === undefined || ids.has(base)) {
+      out.push(questions[i]);
+      i += 1;
+      continue;
+    }
+    let end = i + 1;
+    while (end < questions.length && questions[end].id === `${base}-${end - i + 1}`)
+      end += 1;
+    const run = questions.slice(i, end);
+    const values = run.flatMap((q) => q.options.map((o) => o.value));
+    const label = run[0].label.replace(PART_OF, "");
+    const isSameAsk = run.every((q) => q.label.replace(PART_OF, "") === label && (q.context ?? "") === (run[0].context ?? ""));
+    const isSplit = run.length >= 2 && isSameAsk && run.every((q) => q.multi && !q.writeIn && !q.other) && new Set(values).size === values.length;
+    if (!isSplit) {
+      out.push(...run);
+      i = end;
+      continue;
+    }
+    const head = run[0];
+    out.push({
+      ...head,
+      id: base,
+      header: head.header === head.id ? base : head.header.replace(SPLIT_ID, "$1"),
+      label,
+      options: run.flatMap((q) => q.options),
+      parts: run.map((q) => ({ id: q.id, values: q.options.map((o) => o.value) }))
+    });
+    i = end;
+  }
+  return out;
+}
 function toForm(title, context, raw, source) {
   if (!Array.isArray(raw) || raw.length === 0)
     return "questions must be a non-empty array.";
@@ -729,7 +806,7 @@ function toForm(title, context, raw, source) {
     id: `f${Date.now().toString(36)}${counter}`,
     title: isText(title) ? title : DEFAULT_TITLE,
     ...isText(context) && { context },
-    questions,
+    questions: source === "plugin" ? questions : joinSplits(questions),
     status: "open",
     source
   };
@@ -783,11 +860,13 @@ function gateFormOf(id, title, context, questions, controls) {
 }
 function gateForm(fields, title) {
   const kit = isObject2(fields.kitForm) ? fields.kitForm : {};
-  return gateFormOf(fields.id, title, kit.context, kit.questions, kit.controls);
+  const form = gateFormOf(fields.id, title, kit.context, kit.questions, kit.controls);
+  return typeof form === "string" || fields.relay !== true ? form : { ...form, relay: true };
 }
 function agentFields(fields) {
   const { kitForm: _, ...rest } = fields;
-  return { ...rest, instruction: GATE_INSTRUCTION(String(fields.id)) };
+  const id = String(fields.id);
+  return { ...rest, instruction: fields.relay === true ? RELAY_INSTRUCTION(id) : GATE_INSTRUCTION(id) };
 }
 function boardFields(fields) {
   const { kitForm: _, ...rest } = fields;
@@ -834,7 +913,7 @@ function formFromRow(row) {
   const controls = isObject2(row.meta) ? row.meta.kitControls : undefined;
   return gateFormOf(row.id, isText(row.kind) ? row.kind : DEFAULT_TITLE, row.context, row.questions, controls);
 }
-function answerOutcome(stdout, session) {
+function answerOutcome(stdout, session, by = "pane") {
   let parsed;
   try {
     parsed = JSON.parse(stdout);
@@ -844,7 +923,7 @@ function answerOutcome(stdout, session) {
   if (!isObject2(parsed) || parsed.conflict !== true)
     return "recorded";
   const answer = isObject2(parsed.row) && isObject2(parsed.row.answer) ? parsed.row.answer : {};
-  return answer.by === "pane" && answer.session === session ? "recorded" : "elsewhere";
+  return answer.by === by && answer.session === session ? "recorded" : "elsewhere";
 }
 
 // mods/gate-form/src/gate/rt.ts
@@ -1089,7 +1168,8 @@ async function markFailed($, form, error) {
 }
 async function recordAnswer($, form, gateId, answers) {
   const session = await $.session.id();
-  const args = ["gate", "answer", gateId, "--answers", JSON.stringify(answers), "--by", "pane", "--session", session];
+  const by = form.relay ? "shepherd" : "pane";
+  const args = ["gate", "answer", gateId, "--answers", JSON.stringify(answers), "--by", by, "--session", session];
   let error;
   let outcome = "recorded";
   try {
@@ -1097,7 +1177,7 @@ async function recordAnswer($, form, gateId, answers) {
     if (ran.exitCode !== 0)
       error = `Not recorded: ${rtError(ran)}`;
     else
-      outcome = answerOutcome(ran.stdout, session);
+      outcome = answerOutcome(ran.stdout, session, by);
   } catch (failure) {
     error = failureText(failure);
   }
@@ -1107,7 +1187,7 @@ async function recordAnswer($, form, gateId, answers) {
   }
   const patch = outcome === "elsewhere" ? { status: "answered", error: undefined, note: ELSEWHERE } : { status: "answered", error: undefined };
   const forms = await writeForms($, (list) => patchForm(list, form.id, patch));
-  if (outcome === "recorded")
+  if (outcome === "recorded" && !form.relay)
     await wakeAnswered($, gateId);
   await showCurrent($, forms, outcome === "elsewhere" ? ELSEWHERE : undefined);
   return true;
@@ -1227,12 +1307,14 @@ async function gateEnded($, gateId, end) {
   const open = (await readForms($)).filter((f) => f.gateId === gateId && f.status === "open" && !answering.has(f.id));
   if (open.length === 0)
     return $.ui.invalidate("ui.render");
-  const self = isSelf(end, await $.session.id());
+  const session = await $.session.id();
+  const relay = open.some((f) => f.relay);
+  const self = isSelf(end, session) || relay && end.status === "answered" && end.by === "shepherd" && end.session === session;
   const won = end.status === "answered" ? end.answers : undefined;
   const note = self ? undefined : [endNote(end), won && controlText(won)].filter(Boolean).join(". ");
   const patch = self ? { status: "answered", error: undefined } : { status: end.status === "answered" ? "answered" : "cancelled", error: undefined, note, ...won && { won } };
   const forms = await writeForms($, (list) => list.map((f) => open.some((o) => o.id === f.id) ? { ...f, ...patch } : f));
-  if (self)
+  if (self && !relay)
     await wakeAnswered($, gateId);
   await showCurrent($, forms, note && `${open[0].title}: ${note}`);
 }
@@ -1388,28 +1470,33 @@ function withText(result, text) {
     return { ...result, content: [{ type: "text", text }], structuredContent: undefined };
   return text;
 }
-async function takeGate($, e, next) {
+async function takeGate($, e, next, present = false) {
   if (setting.reading)
     await setting.reading;
   if (!canDraw(e))
     return next(e);
-  const out = await next({ ...e, kitForm: true });
+  const out = await next(present ? e : { ...e, kitForm: true });
   if (out.deny !== undefined || out.isError)
     return out;
   const text = textOf(out);
   const kit = readKitResult(text);
   const board = kit.kind === "other" ? readBoardOnly(text) : undefined;
+  const boardKind = board && present ? JSON.parse(text).kind : e.kind;
   if (board)
-    await addBoard($, { gateId: board.gateId, kind: String(e.kind ?? "") }, board.supersededId);
+    await addBoard($, { gateId: board.gateId, kind: String(boardKind ?? "") }, board.supersededId);
   if (kit.kind === "other")
     return out;
-  const kind = e.kind;
+  const kind = present && kit.kind === "kit" ? kit.fields.kind : e.kind;
   const title = typeof kind === "string" && kind.trim() !== "" ? kind : GATE_TITLE;
   const kindText = typeof kind === "string" ? kind : "";
+  if (present && (kit.kind !== "kit" || typeof gateForm(kit.fields, GATE_TITLE) === "string"))
+    return out;
   if (kit.kind === "kit") {
     const gateId = kit.fields.id;
     if (typeof gateId !== "string" || gateId === "")
       return out;
+    if (present && (await readForms($)).some((f) => f.gateId === gateId && f.status === "open"))
+      return { result: withText(out.result, JSON.stringify(agentFields(kit.fields))) };
     const shown = await showKitGate($, gateForm(kit.fields, title), { gateId, kind: kindText }, supersededOf(kit.fields));
     return { result: withText(out.result, JSON.stringify(shown === "form" ? agentFields(kit.fields) : boardFields(kit.fields))) };
   }
@@ -1534,6 +1621,7 @@ function register(on) {
   });
   on("tool.call", { tool: "mcp__plugin_mattstack_mattstack__gate_ask" }, ($, e, next) => takeGate($, e, next)).catch(($, e, next) => next(e));
   on("tool.call", { tool: "mcp__plugin_mattstack_mattstack__gate_open" }, ($, e, next) => takeGate($, e, next)).catch(($, e, next) => next(e));
+  on("tool.call", { tool: "mcp__plugin_mattstack_mattstack__herd_gate_present" }, ($, e, next) => takeGate($, e, next, true)).catch(($, e, next) => next(e));
   on("prompt.edit", async ($, e, next) => {
     await setKeysInForm($, false);
     return next(e);
@@ -1594,7 +1682,7 @@ function register(on) {
         dimColor: true
       }, "This screen can't draw the form yet. Answer in the terminal.");
     const body = paneRows(e);
-    const rows = Math.max(8, body - 3);
+    const rows = Math.max(8, body);
     const focused = e.props.isFocused || await read($, keysAtom);
     const height = Math.max(1, form.status === "open" ? body : body - 2);
     if (form.confirm && form.status === "open") {

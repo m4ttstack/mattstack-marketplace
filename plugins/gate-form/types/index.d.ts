@@ -10,6 +10,9 @@ export type FormQuestion = {
   other: boolean
   context?: string
   options: FormOption[]
+  // A pick-any list an agent split across `<id>-1`, `<id>-2`, ... (the native form's four-option cap), drawn here as one
+  // question: each part's id and the option values it owns, so the answer goes back in the shape the agent asked for.
+  parts?: { id: string; values: string[] }[]
 }
 
 // The run controls a gate offers; More actions shows a row for each that is set.
@@ -26,6 +29,8 @@ export type Form = {
   // A plugin form drawn as a confirm dialog: its options are numbered rows, and a pick is the answer.
   confirm?: true
   gateId?: string
+  // A herd worker's gate the shepherd presents: its answer is recorded as the shepherd's, and wakes the worker, not this agent.
+  relay?: true
   controls?: Controls
   // What the person reads about the last answer, which may not be recorded; `attempt` counts the failures so the Client knows to take the form back.
   error?: string

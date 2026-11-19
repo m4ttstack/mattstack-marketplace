@@ -7,8 +7,9 @@ order: 1
 Outside a pipeline this verb is its own run, so the console shows it and
 the Stop hook covers its pane. `run_enter` starts, resumes or inherits the
 run, or returns the running candidates; never list, read or build run dbs
-by hand. It takes `flags` (the block below, verbatim), `skillDir` (this
-skill's directory) and `stage: self-review`, plus `runDb` only when a
+by hand. It takes `flags` (the block below, verbatim), `skillDir` (the
+folder holding the SKILL.md you are following: the `dir` you passed
+`load_skill`, or the folder of the file you read) and `stage: self-review`, plus `runDb` only when a
 caller handed you one, `resume` only when a caller handed you a
 self-review run id, and `spawnedBy` only when a board or another surface
 launched this pane.
@@ -34,7 +35,13 @@ the counted event, and its `<key> spent?` diamond reads `exhausted`:
 | `fix:<finding id>:<round>` | 3 | a fix attempt fails; `<round>` is 1, then 2 after the finding's reopened gate |
 | `verdict-rounds:<depth>` | 2 | a verdict check at that depth leaves problems |
 | `reopen:<finding id>` | 2 | the finding's fix budget is spent: the first charge opens the reopened gate, the second leaves the finding open |
-| `rereview-rounds` | 3 | a fix round that changed code is about to be re-reviewed; charged before the dispatch, so two re-reviews run and the third changed round holds |
+| `rereview-rounds` | the re-review cap + 1 | a fix round that changed code is about to be re-reviewed; charged before the dispatch, so the cap's worth of re-reviews run and the next changed round holds |
+
+The **re-review cap** is the `review.rereviewRounds` setting. Read it once,
+before the first `rereview-rounds` charge, with
+`rt_verb {args: ["settings", "get", "review.rereviewRounds", "--json"]}`
+and take its `value`; when that call fails (an older app has no such
+setting), the cap is 2. A cap of 2 passes `limit: 3`.
 
 <HARD-GATE>
 Do not form the code-quality judgment yourself, not even a careful first

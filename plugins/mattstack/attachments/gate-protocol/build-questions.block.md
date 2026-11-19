@@ -27,9 +27,13 @@ not your own.
   question's own `context` sets up that question alone; an option's
   `description` is its one-line why.
 - **Options** are `{value, label}` objects when values are not
-  human-readable; a recommended pick's `label` ends ` (Recommended)`, its
-  `value` bare. In a site table headed `Options (recommended first)`, mark
-  the option the table writes; a row with none marks none.
+  human-readable, and always when the label carries the marker. A `label`
+  ending ` (Recommended)`, its `value` the bare text, makes that option a default: the one pre-picked option of a single
+  choice, or each pre-ticked option of a multi-select. A site's
+  "pre-selected" options each carry it. The native in-pane form ticks
+  nothing, so there the label is only a hint. In a site table headed
+  `Options (recommended first)`, mark the option the table writes; a row
+  with none marks none.
 - **The questions are the site's table, and only those.** A gate asks no
   navigation question: an answer with no `next` reads as `proceed`, and a
   write-in is the way to ask for a change (`Act on a write-in`). The
@@ -41,5 +45,13 @@ not your own.
   sentence of context and take the site's `proceed` edge.
 - **Write-ins** go only on a decision question whose free text you can act
   on, never on a review-post, respond, doctor or pane-attention question.
-- **At most 4 options per question**, or the whole gate goes to the wait;
-  a longer list splits into `<id>-1`, `<id>-2`, ... read as one union.
+- **The option cap follows who draws the gate.** Every option of a list
+  goes in ONE question, never split, when the kit form draws the gate: a
+  `gate_ask` or `gate_open` called from the main session (never a
+  subagent), not a `handBack: true` open, with gate-form's `ask` tool
+  (`mcp__gate-form__ask`) in that session. Every other gate keeps the cap:
+  at most 4 options per question (one question over it sends the whole
+  gate to the wait), so a longer list splits into `<id>-1`, `<id>-2`, ...
+  read as one union. A
+  result carrying `formCapExceeded` is already open on the board: follow
+  its `paneAction` and never reopen it.
